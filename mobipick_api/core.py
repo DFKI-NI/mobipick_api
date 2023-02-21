@@ -2,9 +2,9 @@
 
 import rospy
 from robot_api.lib import _init_node
-from robot_api.extensions import Arm
 from robot_api import Base
 from mobipick_api.perception import Perception
+from mobipick_api.manipulation import Manipulation
 
 class Robot:
     def __init__(self, namespace: str=rospy.get_namespace(), connect_navigation_on_init: bool=False,
@@ -17,5 +17,5 @@ class Robot:
             namespace += '/'
         self.namespace = namespace
         self.base = Base(namespace, connect_navigation_on_init)
-        self.arm = Arm(namespace, connect_manipulation_on_init)
-        self.arm_cam = Perception(namespace, arm=self.arm)
+        self.arm = Manipulation(namespace, connect_manipulation_on_init)
+        self.arm_cam = Perception(namespace, self.arm)
