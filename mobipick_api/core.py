@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+
+import rospy
+from robot_api.lib import _init_node
+from robot_api.extensions import Arm
+from robot_api import Base
+from mobipick_api.perception import Perception
+
+class Robot:
+    def __init__(self, namespace: str=rospy.get_namespace(), connect_navigation_on_init: bool=False,
+            connect_manipulation_on_init: bool=False) -> None:
+        _init_node()
+        # Make sure namespace naming is correct.
+        if not namespace.startswith('/'):
+            namespace = '/' + namespace
+        if not namespace.endswith('/'):
+            namespace += '/'
+        self.namespace = namespace
+        self.base = Base(namespace, connect_navigation_on_init)
+        self.arm = Arm(namespace, connect_manipulation_on_init)
+        self.arm_cam = Perception(namespace, arm=self.arm)

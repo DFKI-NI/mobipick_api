@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>mobipick_api</name>
+  <version>1.0.0</version>
+  <description>A pre- and concise Python API to control the robot mobipick with simple commands.</description>
+
+  <maintainer email="oscar.lima@dfki.de">Alexander Sung</maintainer>
+
+  <license>BSD</license>
+
+  <url type="website">https://github.com/DFKI-NI/mobipick_api</url>
+  <author email="oscar.lima@dfki.de">Alexander Sung</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>robot_api</depend>
+
+</package>
