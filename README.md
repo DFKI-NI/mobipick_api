@@ -44,6 +44,8 @@ roscat mobipick_moveit_config mobipick.srdf.xacro | grep arm | grep state
 mobipick.arm.pick_object('multimeter_1', 'table_3', planning_scene_ignore_list=[], timeout=50.0)
 # insert an object that was previously picked into a container, e.g. a box
 mobipick.arm.insert_object('klt_3', observe_before_insert=False, timeout=50.0)
+# assuming that mobipick has an object in its gripper, you can place it on a surface by doing:
+mobipick.arm.place_object('table_3', observe_before_place=False, timeout=50.0)
 ```
 
 # Credit
