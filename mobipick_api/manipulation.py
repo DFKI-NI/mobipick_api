@@ -52,3 +52,31 @@ class Manipulation(Arm):
         else:
             rospy.logerr(f'action server {pick_object_server_name} not available')
         return False
+
+    def insert_object(self, container, observe_before_insert=False, timeout=50.0, insert_object_server_name='insert_object'):
+        insert_object_server_name = self.namespace + insert_object_server_name
+        action_client = actionlib.SimpleActionClient(insert_object_server_name, InsertObjectAction)
+        rospy.loginfo(f'waiting for {insert_object_server_name} action server')
+        if action_client.wait_for_server(timeout=rospy.Duration.from_sec(2.0)):
+            rospy.loginfo(f'found {insert_object_server_name} action server')
+            goal = InsertObjectGoal()
+            goal.support_surface_name = container
+            goal.observe_before_insert = observe_before_insert
+            rospy.loginfo(f'sending insert goal to {insert_object_server_name} action server')
+            action_client.send_goal(goal)
+            rospy.loginfo(f'waiting for result from {insert_object_server_name} action server')
+            if action_client.wait_for_result(rospy.Duration.from_sec(timeout)):
+                result = action_client.get_result()
+                rospy.loginfo(f'{insert_object_server_name} is done with execution, resuĺt was = "{result}"')
+                if result.success:
+                    rospy.loginfo(f'Succesfully inserted object')
+                    return True
+                else:
+                    rospy.logerr(f'Failed to insert object')
+                    return False
+            else:
+                rospy.logerr(f'Failed to insert object, timeout?')
+                return False
+        else:
+            rospy.logerr(f'action server {insert_object_server_name} not available')
+        return False
