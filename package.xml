@@ -12,6 +12,9 @@
   <author email="oscar.lima@dfki.de">Alexander Sung</author>
 
   <buildtool_depend>catkin</buildtool_depend>
-  <depend>robot_api</depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>robot_api</exec_depend>
+  <exec_depend>actionlib</exec_depend>
+  <exec_depend>grasplan</exec_depend>
 
 </package>
