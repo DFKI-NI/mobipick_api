@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 
+from typing import List, Optional
 import rospy
 from std_srvs.srv import SetBool, Trigger
-from pose_selector.srv import ClassQuery, GetPoses
+from geometry_msgs.msg import Pose
+from object_pose_msgs.msg import ObjectPose
+from pose_selector.srv import ClassQuery, GetPoses, GetPosesResponse
+from mobipick_api.manipulation import Manipulation
 
 class Perception:
-    def __init__(self, namespace, arm):
+    def __init__(self, namespace: str, arm: Manipulation) -> None:
         self.arm = arm
         self.pose_selector_activate_srv_name = rospy.get_param(
             '~pose_selector_activate_srv_name', '/pick_pose_selector_node/pose_selector_activate')
@@ -35,7 +39,7 @@ class Perception:
             rospy.logerr(f'error msg : {e}')
             rospy.logerr('an exception ocurred while waiting for pose selector services, is pose selector available?')
 
-    def wait_for_pose_selector_srv(self, srv_name):
+    def wait_for_pose_selector_srv(self, srv_name: str) -> None:
         rospy.loginfo(f'waiting for pose selector services: {srv_name}')
         try:
             rospy.wait_for_service(srv_name, 2.0)
@@ -43,7 +47,7 @@ class Perception:
             rospy.loginfo("pose selector not available, can't perceive")
             return False
 
-    def perceive(self, observation_list=['observe100cm_right']):
+    def perceive(self, observation_list: List[str]=['observe100cm_right']) -> None:
         self.wait_for_pose_selector_srv(self.pose_selector_activate_srv_name)
         rospy.loginfo(f'perceiving objects, observation_list : {observation_list}')
         # iterate over arm observation poses and enable/disable pose selector
@@ -53,7 +57,7 @@ class Perception:
             self.arm.move(observation_pose)
             self.perceive_without_moving_arm()
 
-    def perceive_without_moving_arm(self):
+    def perceive_without_moving_arm(self) -> None:
         self.wait_for_pose_selector_srv(self.pose_selector_activate_srv_name)
         rospy.loginfo(f'perceiving objects')
         # activate pose selector
@@ -67,11 +71,12 @@ class Perception:
         resp = self.activate_pose_selector_srv(False)
         rospy.loginfo(f'pose selector response to de-activation request: {resp}')
 
-    def is_object_inside_pose_selector(self, object_of_interest):
+    def is_object_inside_pose_selector(self, object_of_interest: str) -> bool:
         self.wait_for_pose_selector_srv(self.pose_selector_get_all_poses_srv_name)
-        resp = self.pose_selector_get_all_poses_srv()
+        resp: GetPosesResponse = self.pose_selector_get_all_poses_srv()
         if len(resp.poses.objects) > 0:
             for pose_selector_object in resp.poses.objects:
+                assert isinstance(pose_selector_object, ObjectPose)
                 anchored_object = str(pose_selector_object.class_id) + '_' + str(pose_selector_object.instance_id)
                 if anchored_object == object_of_interest:
                     rospy.loginfo(f'object {object_of_interest} found!')
@@ -84,11 +89,12 @@ class Perception:
             rospy.logwarn('pose selector is empty')
         return False
 
-    def get_object_pose(self, object_name):
+    def get_object_pose(self, object_name) -> Optional[Pose]:
         self.wait_for_pose_selector_srv(self.pose_selector_get_all_poses_srv_name)
-        resp = self.pose_selector_get_all_poses_srv()
+        resp: GetPosesResponse = self.pose_selector_get_all_poses_srv()
         if len(resp.poses.objects) > 0:
             for pose_selector_object in resp.poses.objects:
+                assert isinstance(pose_selector_object, ObjectPose)
                 anchored_object = str(pose_selector_object.class_id) + '_' + str(pose_selector_object.instance_id)
                 if anchored_object == object_name:
                     rospy.loginfo(f'object {object_name} found!')

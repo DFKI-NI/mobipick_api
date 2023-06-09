@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 
+from typing import List, Optional
 import rospy
 import actionlib
 from robot_api.extensions import Arm
 
 from grasplan.msg import PickObjectAction, PickObjectGoal, PlaceObjectAction
-from grasplan.msg import PlaceObjectGoal, InsertObjectAction, InsertObjectGoal
+from grasplan.msg import PlaceObjectGoal, InsertObjectAction, InsertObjectGoal, InsertObjectResult
 
 class Manipulation(Arm):
-    def __init__(self, namespace, connect_manipulation_on_init):
+    def __init__(self, namespace: str, connect_manipulation_on_init):
         super().__init__(namespace, connect_manipulation_on_init)
         self.namespace = namespace
 
-    def pick_object(self, object_to_pick, support_surface_name, planning_scene_ignore_list=[], timeout=50.0,
-                    pick_object_server_name='pick_object'):
+    def pick_object(self, object_to_pick: str, support_surface_name: str, planning_scene_ignore_list: Optional[List[str]] = None,
+                    timeout: float=50.0, pick_object_server_name: str='pick_object') -> bool:
         '''
         planning_scene_ignore_list : a list of objects that are inside e.g. a box. If you want to pick the box and has
         objects inside it will fail because it is in collision with multiple objects that are inside it.
@@ -21,6 +22,8 @@ class Manipulation(Arm):
         e.g. multimeter_1 and relay_1 are inside the box klt_2, then planning_scene_ignore_list=[multimeter_1, relay_1]
              object_to_pick=klt_2, support_surface_name='table_1'
         '''
+        if planning_scene_ignore_list is None:
+            planning_scene_ignore_list = []
         pick_object_server_name = self.namespace + pick_object_server_name
         action_client = actionlib.SimpleActionClient(pick_object_server_name, PickObjectAction)
         rospy.loginfo(f'waiting for {pick_object_server_name} action server')
@@ -40,7 +43,7 @@ class Manipulation(Arm):
             action_client.send_goal(goal)
             rospy.loginfo(f'waiting for result from {pick_object_server_name} action server')
             if action_client.wait_for_result(rospy.Duration.from_sec(timeout)):
-                result = action_client.get_result()
+                result: InsertObjectResult = action_client.get_result()
                 rospy.loginfo(f'{pick_object_server_name} is done with execution, resuĺt was = "{result}"')
                 if result.success:
                     rospy.loginfo(f'Succesfully picked {object_to_pick}')
@@ -53,7 +56,8 @@ class Manipulation(Arm):
             rospy.logerr(f'action server {pick_object_server_name} not available')
         return False
 
-    def place_object(self, support_surface_name, observe_before_place=False, timeout=50.0, place_object_server_name='place_object'):
+    def place_object(self, support_surface_name: str, observe_before_place: bool=False, timeout: float=50.0,
+                     place_object_server_name: str='place_object') -> bool:
         place_object_server_name = self.namespace + place_object_server_name
         action_client = actionlib.SimpleActionClient(place_object_server_name, PlaceObjectAction)
         rospy.loginfo(f'waiting for {place_object_server_name} action server')
@@ -66,7 +70,7 @@ class Manipulation(Arm):
             action_client.send_goal(goal)
             rospy.loginfo(f'waiting for result from {place_object_server_name} action server')
             if action_client.wait_for_result(rospy.Duration.from_sec(timeout)):
-                result = action_client.get_result()
+                result: InsertObjectResult = action_client.get_result()
                 rospy.loginfo(f'{place_object_server_name} is done with execution, resuĺt was = "{result}"')
                 if result.success:
                     rospy.loginfo('Succesfully placed object')
@@ -79,7 +83,8 @@ class Manipulation(Arm):
             rospy.logerr(f'action server {place_object_server_name} not available')
         return False
 
-    def insert_object(self, container, observe_before_insert=False, timeout=50.0, insert_object_server_name='insert_object'):
+    def insert_object(self, container: str, observe_before_insert: bool=False, timeout: float=50.0,
+                      insert_object_server_name: str='insert_object') -> bool:
         insert_object_server_name = self.namespace + insert_object_server_name
         action_client = actionlib.SimpleActionClient(insert_object_server_name, InsertObjectAction)
         rospy.loginfo(f'waiting for {insert_object_server_name} action server')
@@ -92,7 +97,7 @@ class Manipulation(Arm):
             action_client.send_goal(goal)
             rospy.loginfo(f'waiting for result from {insert_object_server_name} action server')
             if action_client.wait_for_result(rospy.Duration.from_sec(timeout)):
-                result = action_client.get_result()
+                result: InsertObjectResult = action_client.get_result()
                 rospy.loginfo(f'{insert_object_server_name} is done with execution, resuĺt was = "{result}"')
                 if result.success:
                     rospy.loginfo(f'Succesfully inserted object')
