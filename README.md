@@ -22,16 +22,19 @@ mobipick.base.move(21.0, 7.0, 3.141592)
 
 Perception:
 ```
-# go to observe100cm_right arm pose and activate pose selector
+# activate pose selector, wait 1 second, deactivate pose selector
+# as DOPE is implemented as a lazy subscriber, activating pose selector means DOPE is activated as well
+# DOPE : Deep Object Pose Estimation
 mobipick.arm_cam.perceive()
+# or
+mobipick.arm_cam.perceive(observation_list=[])
+
 # alternatively, define a list of observation poses to visit
 mobipick.arm_cam.perceive(observation_list=['observe100cm_right', 'observe100cm_front'])
-# alternatively, perceive without moving the robot arm
-mobipick.arm_cam.perceive_without_moving_arm()
 # query 6D pose estimate of a specific object
-print(mobipick.arm_cam.get_object_pose('multimeter_1'))
+mobipick.arm_cam.get_object_pose('multimeter_1')
 # query if a specific object was perceived or not
-print(mobipick.arm_cam.is_object_inside_pose_selector('multimeter_1')) # expected return value is a boolean
+mobipick.arm_cam.is_object_inside_pose_selector('multimeter_1') # expected return value is a boolean
 ```
 
 Manipulation (with MoveIt):

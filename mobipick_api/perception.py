@@ -47,7 +47,9 @@ class Perception:
             rospy.loginfo("pose selector not available, can't perceive")
             return False
 
-    def perceive(self, observation_list: List[str]=['observe100cm_right']) -> None:
+    def perceive(self, observation_list: List[str]=[]) -> None:
+        if observation_list == []:
+            return self._perceive_without_moving_arm()
         self.wait_for_pose_selector_srv(self.pose_selector_activate_srv_name)
         rospy.loginfo(f'perceiving objects, observation_list : {observation_list}')
         # iterate over arm observation poses and enable/disable pose selector
@@ -55,9 +57,9 @@ class Perception:
             rospy.loginfo(f'moving arm to {observation_pose}')
             # move arm to observation pose
             self.arm.move(observation_pose)
-            self.perceive_without_moving_arm()
+            self._perceive_without_moving_arm()
 
-    def perceive_without_moving_arm(self) -> None:
+    def _perceive_without_moving_arm(self) -> None:
         self.wait_for_pose_selector_srv(self.pose_selector_activate_srv_name)
         rospy.loginfo(f'perceiving objects')
         # activate pose selector
