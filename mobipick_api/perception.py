@@ -4,7 +4,7 @@ from typing import List, Optional
 import rospy
 from std_srvs.srv import SetBool, Trigger
 from geometry_msgs.msg import Pose
-from object_pose_msgs.msg import ObjectPose
+from object_pose_msgs.msg import ObjectPose, ObjectList
 from pose_selector.srv import ClassQuery, GetPoses, GetPosesResponse
 from mobipick_api.manipulation import Manipulation
 
@@ -105,6 +105,15 @@ class Perception:
                     rospy.logdebug(f'object {anchored_object} not equal to {object_name}, trying next object')
             rospy.logerr(f'tried all objects without success, {object_name} could not be found in pose selector')
             return None
+        else:
+            rospy.logwarn('pose selector is empty')
+        return None
+
+    def get_all_known_object_poses(self) -> ObjectList:
+        self.wait_for_pose_selector_srv(self.pose_selector_get_all_poses_srv_name)
+        resp: GetPosesResponse = self.pose_selector_get_all_poses_srv()
+        if len(resp.poses.objects) > 0:
+            return resp.poses
         else:
             rospy.logwarn('pose selector is empty')
         return None
