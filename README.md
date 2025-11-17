@@ -63,6 +63,18 @@ changed_facts = mobipick.semantic_env_rep.get_changed_facts()
 if changed_facts is not None:
     pass
 ```
+
+Human robot interaction (HRI - Using [whisper_ros](https://git.ni.dfki.de/pbr_misc/whisper_ros))
+```python
+# listen for an utterance using Whisper based ASR
+# returns the last recognized text or an empty string if nothing was recognized
+recognized_text = mobipick.hri.listen(timeout=3.0)
+# clear the internal recognized speech buffer before starting a new dialog turn
+mobipick.hri.clear_recognized_speech_buffer()
+# TTS
+mobipick.hri.speak("text to be spoken by the robot", blocking=True)
+```
+
 # Credit
 
 mobipick_api depends and is inspired by robot_api which was developed by Alexander Sung alexander.sung@dfki.de

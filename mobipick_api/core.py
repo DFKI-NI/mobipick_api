@@ -6,6 +6,7 @@ from robot_api import Base
 from mobipick_api.perception import Perception
 from mobipick_api.manipulation import Manipulation
 from mobipick_api.semantic_environment_rep import SemEnvRep
+from mobipick_api.hri import HRI
 
 class Robot:
     def __init__(self, namespace: str=rospy.get_namespace(), connect_navigation_on_init: bool=False,
@@ -21,3 +22,4 @@ class Robot:
         self.arm = Manipulation(namespace, connect_manipulation_on_init)
         self.arm_cam = Perception(namespace, self.arm)
         self.semantic_env_rep = SemEnvRep(namespace)
+        self.hri = HRI(namespace)
