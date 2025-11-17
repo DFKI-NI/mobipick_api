@@ -27,11 +27,18 @@ class Manipulation(Arm):
     def pick_object(self, object_to_pick: str, support_surface_name: str, planning_scene_ignore_list: Optional[List[str]] = None,
                     timeout: float=50.0, pick_object_server_name: str='pick_object') -> bool:
         '''
-        planning_scene_ignore_list : a list of objects that are inside e.g. a box. If you want to pick the box and has
-        objects inside it will fail because it is in collision with multiple objects that are inside it.
-        By adding those objects to the planning_scene_ignore_list you will be able to pick a box that has one or many items.
-        e.g. multimeter_1 and relay_1 are inside the box klt_2, then planning_scene_ignore_list=[multimeter_1, relay_1]
-             object_to_pick=klt_2, support_surface_name='table_1'
+        Pick the given object from the given support surface.
+        :param object_to_pick: Name of the object to pick. (e.g., "multimeter_1")
+        :param support_surface_name: Name of the surface where the object is located. (e.g., "table_1")
+        :param planning_scene_ignore_list : a list of objects that might be inside, e.g. in a box: If you want to pick the box and has
+          objects inside it will fail because it is in collision with multiple objects that are inside it.
+          By adding those objects to the planning_scene_ignore_list we are able to pick a box that has one or many items.
+          e.g. assuming object_to_pick is klt_2 and multimeter_1 and relay_1 are inside the box (klt_2),
+               then object_to_pick=klt_2, support_surface_name='table_1', planning_scene_ignore_list=[multimeter_1, relay_1]
+        :param timeout: Timeout for the action server. Default is 50.0 seconds. Usually this does not require modification.
+        :param pick_object_server_name: Name of the pick object action server.
+          Do not change unless a refactoring of the code occurs.
+        :return: True if the object was picked successfully, False otherwise.
         '''
         if planning_scene_ignore_list is None:
             planning_scene_ignore_list = []
@@ -69,6 +76,18 @@ class Manipulation(Arm):
 
     def place_object(self, support_surface_name: str, observe_before_place: bool=False, timeout: float=50.0,
                      place_object_server_name: str='place_object') -> bool:
+        '''
+        Place the currently held object on the given support surface.
+        NOTE: the object to be placed does not need to be specified as argument,
+        as it is assumed that the robot is already holding the object to be placed.
+        :param support_surface_name: Name of the surface where to place the object. (e.g., "table_1")
+        :param observe_before_place: Whether to observe the scene before placing.
+          NOTE: do not observe before place if the object you want to place is filled with objects as they could fall out.
+        :param timeout: Timeout for the action server. Default is 50.0 seconds. Usually this does not require modification.
+        :param place_object_server_name: Name of the place object action server.
+          Do not change unless a refactoring of the code occurs.
+        :return: True if the object was placed successfully, False otherwise.
+        '''
         place_object_server_name = '/' + self.namespace + '/' + place_object_server_name
         action_client = actionlib.SimpleActionClient(place_object_server_name, PlaceObjectAction)
         rospy.loginfo(f'waiting for {place_object_server_name} action server')
@@ -96,6 +115,17 @@ class Manipulation(Arm):
 
     def insert_object(self, container: str, observe_before_insert: bool=False, timeout: float=50.0,
                       insert_object_server_name: str='insert_object') -> bool:
+        '''
+        Insert the currently held object into the given container.
+        NOTE: the object to be inserted does not need to be specified as argument,
+        as it is assumed that the robot is already holding the object to be inserted.
+        :param container: Name of the container where to insert the object. (e.g., "klt_1")
+        :param observe_before_insert: Whether to observe the scene before inserting. Not necessary if container 6D pose is accurate.
+        :param timeout: Timeout for the action server. Default is 50.0 seconds. Usually this does not require modification.
+        :param insert_object_server_name: Name of the insert object action server.
+          Do not change unless a refactoring of the code occurs.
+        :return: True if the object was inserted successfully, False otherwise.
+        '''
         insert_object_server_name = '/' + self.namespace + '/' + insert_object_server_name
         action_client = actionlib.SimpleActionClient(insert_object_server_name, InsertObjectAction)
         rospy.loginfo(f'waiting for {insert_object_server_name} action server')
