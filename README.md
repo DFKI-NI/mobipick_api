@@ -7,13 +7,13 @@ A pre- and concise Python API to control [mobipick robot](https://github.com/DFK
 # Usage snippets
 
 Get a Mobipick Robot object using the robot's namespace:
-```
+```python
 import mobipick_api
 mobipick = mobipick_api.Robot('mobipick')
 ```
 
 Navigation:
-```
+```python
 # Get the robot's 2D pose using localization.
 mobipick.base.get_2d_pose()
 # Move the robot's base using move_base.
@@ -21,7 +21,7 @@ mobipick.base.move(21.0, 7.0, 3.141592)
 ```
 
 Perception:
-```
+```python
 # activate pose selector, wait 1 second, deactivate pose selector
 # as DOPE is implemented as a lazy subscriber, activating pose selector means DOPE is activated as well
 # DOPE : Deep Object Pose Estimation
@@ -38,7 +38,7 @@ mobipick.arm_cam.is_object_inside_pose_selector('multimeter_1') # expected retur
 ```
 
 Manipulation (with MoveIt):
-```
+```python
 # move the robot's arm in configuration space to predefined semantic poses
 mobipick.arm.move('transport')
 # to see predefined semnatic poses do the following command in a terminal:
@@ -51,6 +51,18 @@ mobipick.arm.insert_object('klt_3', observe_before_insert=False, timeout=50.0)
 mobipick.arm.place_object('table_3', observe_before_place=False, timeout=50.0)
 ```
 
+Semantic environment representation (Using [SFG](semantic_env_rep.)):
+```python
+# get all the facts
+facts = mobipick.semantic_env_rep.get_facts()
+for fact in facts:
+    # inspect fact fields, e.g. fact.predicate, fact.subject, fact.value
+    pass
+# only get the facts that changed wrt last time the function was called
+changed_facts = mobipick.semantic_env_rep.get_changed_facts()
+if changed_facts is not None:
+    pass
+```
 # Credit
 
 mobipick_api depends and is inspired by robot_api which was developed by Alexander Sung alexander.sung@dfki.de
