@@ -23,9 +23,6 @@ class HRI:
         # Buffer of recognized utterances since last clear
         self._recognized_buffer: List[str] = []
 
-        # Last recognized utterance
-        self._last_recognized: str = ""
-
         # Subscriber for recognized speech text from Whisper based ASR
         self._speech_sub = rospy.Subscriber(
             self._recognized_speech_topic,
@@ -42,10 +39,13 @@ class HRI:
         if not text:
             return
 
-        self._last_recognized = text
         self._recognized_buffer.append(text)
 
-    def clear_recognized_speech_buffer(self) -> None:
+    def get_recognized_speech(self) -> List[str]:
+        """Get internal buffer of recognized speech since last clear."""
+        return self._recognized_buffer.copy()
+
+    def clear_recognized_speech(self) -> None:
         """Clear internal buffer of recognized speech before a new dialog turn."""
         self._recognized_buffer.clear()
 
