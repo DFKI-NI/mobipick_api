@@ -25,8 +25,8 @@ class Robot:
         self.namespace = namespace
         self.base = Base(namespace, connect_navigation_on_init)
         self.arm = Manipulation(namespace, connect_manipulation_on_init)
-        self.arm_cam = Perception(namespace, self.arm)
         self.semantic_env_rep = SemEnvRep(namespace)
+        self.arm_cam = Perception(namespace, self.arm, self.semantic_env_rep)
         self.hri = HRI(namespace)
 
         self._emergency_stop_status = rospy.ServiceProxy(

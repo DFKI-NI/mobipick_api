@@ -5,35 +5,42 @@ import rospy
 from std_srvs.srv import SetBool, Trigger
 from geometry_msgs.msg import Pose
 from object_pose_msgs.msg import ObjectPose, ObjectList
-from pose_selector.srv import ClassQuery, GetPoses, GetPosesResponse
+from pose_selector.srv import ClassQuery, GetPoses, GetPosesResponse, PoseDelete, PoseDeleteRequest
 from mobipick_api.manipulation import Manipulation
+from mobipick_api.semantic_environment_rep import SemEnvRep
 
 class Perception:
-    def __init__(self, namespace: str, arm: Manipulation) -> None:
+    def __init__(self, namespace: str, arm: Manipulation, semantic_env_rep: SemEnvRep) -> None:
         self.arm = arm
+        self.semantic_env_rep = semantic_env_rep
         self.pose_selector_activate_srv_name = rospy.get_param(
             '~pose_selector_activate_srv_name', '/pick_pose_selector_node/pose_selector_activate')
         self.pose_selector_class_query_srv_name = rospy.get_param(
             '~pose_selector_class_query_srv_name', '/pick_pose_selector_node/pose_selector_class_query')
         self.pose_selector_get_all_poses_srv_name = rospy.get_param(
             '~pose_selector_get_all_poses_srv_name', '/pick_pose_selector_node/pose_selector_get_all')
+        self.pose_selector_delete_srv_name = rospy.get_param(
+            '~pose_selector_delete_srv_name', '/pick_pose_selector_node/pose_selector_delete')
         self.pose_selector_clear_srv_name = rospy.get_param(
             '~pose_selector_clear_srv_name', '/pick_pose_selector_node/pose_selector_clear')
         rospy.loginfo(
             f'waiting for pose selector services: {self.pose_selector_activate_srv_name}, '
             f'{self.pose_selector_class_query_srv_name}, '
             f'{self.pose_selector_get_all_poses_srv_name}, '
-            f'{self.pose_selector_clear_srv_name}'
+            f'{self.pose_selector_clear_srv_name}, '
+            f'{self.pose_selector_delete_srv_name}'
         )
         try:
             rospy.wait_for_service(self.pose_selector_activate_srv_name, 2.0)
             rospy.wait_for_service(self.pose_selector_class_query_srv_name, 0.5)
             rospy.wait_for_service(self.pose_selector_get_all_poses_srv_name, 0.5)
             rospy.wait_for_service(self.pose_selector_clear_srv_name, 0.5)
+            rospy.wait_for_service(self.pose_selector_delete_srv_name, 0.5)
             self.activate_pose_selector_srv = rospy.ServiceProxy(self.pose_selector_activate_srv_name, SetBool)
             self.pose_selector_class_query_srv = rospy.ServiceProxy(self.pose_selector_class_query_srv_name, ClassQuery)
             self.pose_selector_get_all_poses_srv = rospy.ServiceProxy(self.pose_selector_get_all_poses_srv_name, GetPoses)
             self.pose_selector_clear_srv = rospy.ServiceProxy(self.pose_selector_clear_srv_name, Trigger)
+            self.pose_selector_delete_srv = rospy.ServiceProxy(self.pose_selector_delete_srv_name, PoseDelete)
             rospy.loginfo('found pose selector services')
         except Exception as e:
             rospy.logerr(f'error msg : {e}')
@@ -72,6 +79,15 @@ class Perception:
         rospy.loginfo('deactivating pose selector')
         resp = self.activate_pose_selector_srv(False)
         rospy.loginfo(f'pose selector response to de-activation request: {resp}')
+
+    def clear_poses_for_table(self, table: str) -> None:
+        # get current facts
+        facts = self.semantic_env_rep.get_facts()
+        # clear facts for table from pose_selector
+        for fact in facts:
+            if fact.name == "on" and fact.values[1] == table:
+                class_id, instance_id = fact.values[0].rsplit("_", 1)
+                self.pose_selector_delete_srv(PoseDeleteRequest(class_id=class_id, instance_id=int(instance_id)))
 
     def is_object_inside_pose_selector(self, object_of_interest: str) -> bool:
         self.wait_for_pose_selector_srv(self.pose_selector_get_all_poses_srv_name)
