@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
-from robot_api.ros_wrapper import get_ros_wrapper
+from robot_api.lib import _init_node
 from robot_api import Base
 from mobipick_api.perception import Perception
 from mobipick_api.manipulation import Manipulation
@@ -11,12 +11,10 @@ from mobipick_api.hri import HRI
 from ur_dashboard_msgs.srv import GetSafetyMode, GetRobotMode
 from ur_dashboard_msgs.msg import SafetyMode, RobotMode
 
-_ros_wrapper = get_ros_wrapper()
-
 class Robot:
     def __init__(self, namespace: str=rospy.get_namespace(), connect_navigation_on_init: bool=False,
             connect_manipulation_on_init: bool=False) -> None:
-        _ros_wrapper._init_node()
+        _init_node()
         # Make sure namespace naming is correct.
         if not namespace.startswith('/'):
             namespace = '/' + namespace
