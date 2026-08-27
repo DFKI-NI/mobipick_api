@@ -13,8 +13,10 @@
 
   <buildtool_depend>catkin</buildtool_depend>
   <exec_depend>rospy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
   <exec_depend>robot_api</exec_depend>
   <exec_depend>actionlib</exec_depend>
   <exec_depend>grasplan</exec_depend>
+  <exec_depend>ur_dashboard_msgs</exec_depend>
 
 </package>
