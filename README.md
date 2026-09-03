@@ -22,7 +22,7 @@ mobipick.base.move(21.0, 7.0, 3.141592)
 
 Perception:
 ```
-# activate pose selector, wait 1 second, deactivate pose selector
+# activate pose selector, collect updates for 5 seconds, deactivate pose selector
 # as DOPE is implemented as a lazy subscriber, activating pose selector means DOPE is activated as well
 # DOPE : Deep Object Pose Estimation
 mobipick.arm_cam.perceive()
@@ -35,7 +35,16 @@ mobipick.arm_cam.perceive(observation_list=['observe100cm_right', 'observe100cm_
 mobipick.arm_cam.get_object_pose('multimeter_1')
 # query if a specific object was perceived or not
 mobipick.arm_cam.is_object_inside_pose_selector('multimeter_1') # expected return value is a boolean
+# remove pose-selector entries for objects whose semantic facts place them on a table
+mobipick.arm_cam.clear_poses_for_table('table_1')
 ```
+
+The robot object can be created before the pose selector node is running. Perception
+operations wait for the particular service they need and can be retried after a
+startup-order or temporary service outage. If the service does not become ready,
+the operation raises `rospy.ServiceException` with the unavailable service name and
+retry guidance. The readiness timeout defaults to 2 seconds and can be configured
+with the private ROS parameter `~pose_selector_service_timeout`.
 
 Manipulation (with MoveIt):
 ```

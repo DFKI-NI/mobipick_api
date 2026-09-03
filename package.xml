@@ -19,4 +19,6 @@
   <exec_depend>grasplan</exec_depend>
   <exec_depend>ur_dashboard_msgs</exec_depend>
 
+  <test_depend>python3-nose</test_depend>
+
 </package>
