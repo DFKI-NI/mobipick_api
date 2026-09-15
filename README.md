@@ -37,6 +37,8 @@ mobipick.arm_cam.get_object_pose('multimeter_1')
 mobipick.arm_cam.is_object_inside_pose_selector('multimeter_1') # expected return value is a boolean
 # remove pose-selector entries for objects whose semantic facts place them on a table
 mobipick.arm_cam.clear_poses_for_table('table_1')
+# match a map-frame pose to the nearest configured table center
+mobipick.table_matcher.closest_table({'position': {'x': 12.1, 'y': 3.2, 'z': 0.8}})
 ```
 
 The robot object can be created before the pose selector node is running. Perception

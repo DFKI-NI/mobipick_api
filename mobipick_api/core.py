@@ -14,6 +14,7 @@ from mobipick_api.perception import Perception
 from mobipick_api.manipulation import Manipulation
 from mobipick_api.semantic_environment_rep import SemEnvRep
 from mobipick_api.hri import HRI
+from mobipick_api.table_matcher import TableMatcher
 
 from ur_dashboard_msgs.srv import GetSafetyMode, GetRobotMode
 from ur_dashboard_msgs.msg import SafetyMode, RobotMode
@@ -33,6 +34,7 @@ class Robot:
         self.semantic_env_rep = SemEnvRep(namespace)
         self.arm_cam = Perception(namespace, self.arm, self.semantic_env_rep)
         self.hri = HRI(namespace)
+        self.table_matcher = TableMatcher()
 
         self._emergency_stop_status = rospy.ServiceProxy(
             f'{self.namespace}ur_hardware_interface/dashboard/get_safety_mode',
