@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import List, Optional
+from typing import Any, List, Optional
 import rospy
 from std_srvs.srv import SetBool, Trigger
 from geometry_msgs.msg import Pose
@@ -27,6 +27,14 @@ class Perception:
             '~pose_selector_delete_srv_name', '/pick_pose_selector_node/pose_selector_delete')
         self.pose_selector_clear_srv_name = rospy.get_param(
             '~pose_selector_clear_srv_name', '/pick_pose_selector_node/pose_selector_clear')
+        # AnyGrasp's stand-alone open-set detector (Grounding DINO + SAM2), see
+        # mobipick_graspness/nodes/segmentation_action.py. Accepted detections are
+        # pushed into the pose selector by the action server itself.
+        self.detect_objects_action_name = rospy.get_param(
+            '~detect_objects_action_name', '/mobipick/detect_objects')
+        self.detect_objects_server_timeout = float(rospy.get_param('~detect_objects_server_timeout', 2.0))
+        self.detect_objects_result_timeout = float(rospy.get_param('~detect_objects_result_timeout', 120.0))
+        self._detect_objects_client = None
 
         # Creating a rospy ServiceProxy does not contact the service.  Always create
         # every proxy here so that a pose selector which starts after Robot can be
@@ -107,6 +115,51 @@ class Perception:
             self.activate_pose_selector_srv,
             False)
         rospy.loginfo(f'pose selector response to de-activation request: {resp}')
+
+    def detect_open_set(self, object_name: str, use_vlm_verifier: bool = False,
+                        observation_pose: Optional[str] = None) -> Optional[Any]:
+        '''Run AnyGrasp's open-set detector for a free-form description ("coke can") on
+        the current camera view, optionally after moving the arm to ``observation_pose``.
+
+        Returns the ``grasplan/DetectObjectsResult`` (``success``, ``message``,
+        ``detections`` with 2-D boxes/masks, ``boxes`` with map-frame oriented 3-D
+        boxes, ``objects`` accepted into the pose selector as ``<class_id>_<n>``), or
+        None when the action server is unavailable or timed out.
+        '''
+        # imported here so the module stays importable in ROS-master-free unit tests
+        import actionlib
+        from actionlib_msgs.msg import GoalStatus
+        from grasplan.msg import DetectObjectsAction, DetectObjectsGoal
+
+        if observation_pose:
+            rospy.loginfo(f'moving arm to {observation_pose} before open-set detection')
+            self.arm.move(observation_pose)
+        if self._detect_objects_client is None:
+            self._detect_objects_client = actionlib.SimpleActionClient(
+                self.detect_objects_action_name, DetectObjectsAction)
+        client = self._detect_objects_client
+        if not client.wait_for_server(rospy.Duration(self.detect_objects_server_timeout)):
+            rospy.logerr(
+                f'open-set detection action server {self.detect_objects_action_name} is unavailable '
+                f'after {self.detect_objects_server_timeout:.1f}s; is AnyGrasp running?')
+            return None
+        rospy.loginfo(f'open-set detection of {object_name!r} (vlm verifier: {use_vlm_verifier})')
+        client.send_goal(
+            DetectObjectsGoal(object_name=object_name, use_vlm_verifier=use_vlm_verifier),
+            feedback_cb=lambda feedback: rospy.loginfo(f'open-set detection: {feedback.stage}'))
+        if not client.wait_for_result(rospy.Duration(self.detect_objects_result_timeout)):
+            client.cancel_goal()
+            rospy.logerr(f'open-set detection of {object_name!r} timed out after '
+                         f'{self.detect_objects_result_timeout:.1f}s')
+            return None
+        result = client.get_result()
+        state = client.get_state()
+        if state != GoalStatus.SUCCEEDED or result is None or not result.success:
+            rospy.logwarn(f'open-set detection of {object_name!r} did not succeed (state {state}): '
+                          f'{getattr(result, "message", client.get_goal_status_text())}')
+        else:
+            rospy.loginfo(f'open-set detection: {result.message}')
+        return result
 
     def clear_poses_for_table(self, table: str) -> None:
         # get current facts

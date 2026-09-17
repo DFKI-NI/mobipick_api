@@ -31,6 +31,10 @@ mobipick.arm_cam.perceive(observation_list=[])
 
 # alternatively, define a list of observation poses to visit
 mobipick.arm_cam.perceive(observation_list=['observe100cm_right', 'observe100cm_front'])
+# open-set detection with AnyGrasp's Grounding DINO + SAM2 (no grasping): accepted
+# detections land in the pose selector as <class_id>_<n>; returns grasplan/DetectObjectsResult
+# with 2D boxes/masks, map-frame oriented 3D boxes and the accepted objects, or None if unavailable
+mobipick.arm_cam.detect_open_set('coke can', use_vlm_verifier=True, observation_pose='observe100cm_right')
 # query 6D pose estimate of a specific object
 mobipick.arm_cam.get_object_pose('multimeter_1')
 # query if a specific object was perceived or not
