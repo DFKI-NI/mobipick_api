@@ -117,9 +117,11 @@ class Perception:
         rospy.loginfo(f'pose selector response to de-activation request: {resp}')
 
     def detect_open_set(self, object_name: str, use_vlm_verifier: bool = False,
-                        observation_pose: Optional[str] = None) -> Optional[Any]:
+                        observation_pose: Optional[str] = None, box_threshold: float = 0.0,
+                        text_threshold: float = 0.0, accept_threshold: float = 0.0) -> Optional[Any]:
         '''Run AnyGrasp's open-set detector for a free-form description ("coke can") on
         the current camera view, optionally after moving the arm to ``observation_pose``.
+        Thresholds left at 0 use the detector node's dynamic_reconfigure defaults.
 
         Returns the ``grasplan/DetectObjectsResult`` (``success``, ``message``,
         ``detections`` with 2-D boxes/masks, ``boxes`` with map-frame oriented 3-D
@@ -145,7 +147,9 @@ class Perception:
             return None
         rospy.loginfo(f'open-set detection of {object_name!r} (vlm verifier: {use_vlm_verifier})')
         client.send_goal(
-            DetectObjectsGoal(object_name=object_name, use_vlm_verifier=use_vlm_verifier),
+            DetectObjectsGoal(object_name=object_name, use_vlm_verifier=use_vlm_verifier,
+                              box_threshold=box_threshold, text_threshold=text_threshold,
+                              accept_threshold=accept_threshold),
             feedback_cb=lambda feedback: rospy.loginfo(f'open-set detection: {feedback.stage}'))
         if not client.wait_for_result(rospy.Duration(self.detect_objects_result_timeout)):
             client.cancel_goal()
