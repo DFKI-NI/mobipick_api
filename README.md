@@ -35,16 +35,18 @@ mobipick.arm_cam.perceive(observation_list=['observe100cm_right', 'observe100cm_
 # detections land in the pose selector as <class_id>_<n>; returns grasplan/DetectObjectsResult
 # with 2D boxes/masks, map-frame oriented 3D boxes and the accepted objects, or None if unavailable
 mobipick.arm_cam.detect_open_set('coke can', use_vlm_verifier=True, observation_pose='observe100cm_right')
-# two-stage variant: proposals from several views (nothing accepted yet) ...
-first = mobipick.arm_cam.detect_proposals('coke can', max_proposals=3, observation_pose='observe100cm_right')
-second = mobipick.arm_cam.detect_proposals('coke can', max_proposals=3, observation_pose='inspect100cm_right_low')
-# ... grouped into candidate objects by 3D position (mobipick_api.open_set) and verified once each
-# with a multi-image VLM request; verdict.status tells MATCH / NO_MATCH from verifier failures
-from mobipick_api.open_set import Proposal, group_proposals
-candidates = group_proposals([Proposal(d.detection_id, d.view_id, d.score, d.label, tuple(d.bbox_xyxy),
-                                       (d.position.x, d.position.y, d.position.z) if d.has_position else None)
-                              for r in (first, second) if r for d in r.detections], radius=0.08)
-mobipick.arm_cam.verify_candidates('coke can', [c.detection_ids for c in candidates], commit=True)
+# object-centric open-set perception of the table the robot stands at (mobipick_active_perception
+# InspectTable action): observation view, VLM triage, close-ups of what needs one, confirmed
+# matches committed to the pose selector; with align=True and DISC running the base is first
+# shifted along its heading so the observation view is centred on the object
+result = mobipick.arm_cam.inspect_table(['sugar box', 'coke can'], table='table_1', align=True)
+result.accepted, result.poses          # e.g. ['sugar_box_1'], map-frame PoseStamped per object
+# the building blocks it uses are clients too: proposals from the current view (nothing accepted)
+# and one multi-image VLM verification per candidate (lists of detection ids)
+first = mobipick.arm_cam.detect_proposals('coke can', max_proposals=5, observation_pose='observe100cm_right')
+mobipick.arm_cam.verify_candidates('coke can', [[d.detection_id for d in first.detections]], commit=True)
+# drive the base straight along its heading (robot_api Base.move_linear -> mobipick_base_motion MoveLinear; negative = backward)
+mobipick.base.move_linear(20.0)
 # query 6D pose estimate of a specific object
 mobipick.arm_cam.get_object_pose('multimeter_1')
 # query if a specific object was perceived or not

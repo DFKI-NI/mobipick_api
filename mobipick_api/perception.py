@@ -39,6 +39,9 @@ class Perception:
         self.verify_objects_action_name = rospy.get_param(
             '~verify_objects_action_name', '/mobipick/verify_objects')
         self.verify_objects_result_timeout = float(rospy.get_param('~verify_objects_result_timeout', 300.0))
+        self.inspect_table_action_name = rospy.get_param('~inspect_table_action_name', '/mobipick/inspect_table')
+        self.inspect_table_result_timeout = float(rospy.get_param('~inspect_table_result_timeout', 1800.0))
+        self._inspect_table_client = None
         self._verify_objects_client = None
 
         # Creating a rospy ServiceProxy does not contact the service.  Always create
@@ -243,6 +246,45 @@ class Perception:
         rospy.loginfo(f'verifying {len(candidates)} candidate(s) of {object_name!r} with the VLM')
         return self._run_action(self._verify_objects_client, goal, 'open-set verification',
                                 self.verify_objects_result_timeout)
+
+    def inspect_table(self, queries: List[Any], table: str = '', align: bool = True, align_to: str = '',
+                      session_dir: str = '', config_overrides: str = '',
+                      feedback_cb: Optional[Any] = None) -> Optional[Any]:
+        '''Object-centric open-set perception of the table the robot stands at, run by the
+        ``mobipick_active_perception`` InspectTable server: observation view, VLM triage, close-ups
+        of the candidates that need one (viewpoints sampled around them, MoveIt), confirmed MATCHes
+        committed to the pose selector. ``queries`` are names or ``{"name", "variants"}`` dicts.
+        With ``align`` and DISC running, the base is first driven along its heading so the
+        observation view is centred on the DISC position of ``align_to`` (default: the first query
+        DISC knows near the table). Returns the ``InspectTableResult`` (``accepted`` ids,
+        ``accepted_query``, map-frame ``poses``, ``session_dir``, ``alignment_cm``) or None.
+        '''
+        import actionlib
+        from mobipick_active_perception.msg import InspectTableAction, InspectTableGoal, Query
+
+        if self._inspect_table_client is None:
+            self._inspect_table_client = actionlib.SimpleActionClient(self.inspect_table_action_name, InspectTableAction)
+        goal = InspectTableGoal(table=table, align=bool(align), align_to=align_to, session_dir=session_dir,
+                                config_overrides=config_overrides)
+        for query in queries:
+            if isinstance(query, str):
+                goal.queries.append(Query(name=query))
+            else:
+                goal.queries.append(Query(name=str(query['name']), variants=list(query.get('variants', []) or [])))
+        rospy.loginfo(f'inspecting {table or "the table"} for {[q.name for q in goal.queries]}'
+                      f'{" (aligned with DISC)" if align else ""}')
+        if not self._inspect_table_client.wait_for_server(rospy.Duration(self.detect_objects_server_timeout)):
+            rospy.logerr(f'action server {self.inspect_table_action_name} not available')
+            return None
+        self._inspect_table_client.send_goal(goal, feedback_cb=feedback_cb)
+        if not self._inspect_table_client.wait_for_result(rospy.Duration(self.inspect_table_result_timeout)):
+            rospy.logerr(f'{self.inspect_table_action_name}: no result within '
+                         f'{self.inspect_table_result_timeout:.0f}s')
+            self._inspect_table_client.cancel_goal()
+            return None
+        result = self._inspect_table_client.get_result()
+        (rospy.loginfo if result.success else rospy.logerr)(f'inspect_table: {result.message}')
+        return result
 
     def clear_poses_for_table(self, table: str) -> None:
         # get current facts
