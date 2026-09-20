@@ -35,6 +35,11 @@ class Perception:
         self.detect_objects_server_timeout = float(rospy.get_param('~detect_objects_server_timeout', 2.0))
         self.detect_objects_result_timeout = float(rospy.get_param('~detect_objects_result_timeout', 120.0))
         self._detect_objects_client = None
+        # Second stage of the two-stage open-set pipeline (see detect_proposals / verify_candidates).
+        self.verify_objects_action_name = rospy.get_param(
+            '~verify_objects_action_name', '/mobipick/verify_objects')
+        self.verify_objects_result_timeout = float(rospy.get_param('~verify_objects_result_timeout', 300.0))
+        self._verify_objects_client = None
 
         # Creating a rospy ServiceProxy does not contact the service.  Always create
         # every proxy here so that a pose selector which starts after Robot can be
@@ -164,6 +169,80 @@ class Perception:
         else:
             rospy.loginfo(f'open-set detection: {result.message}')
         return result
+
+    def _run_action(self, client, goal, name: str, result_timeout: float) -> Optional[Any]:
+        from actionlib_msgs.msg import GoalStatus
+
+        if not client.wait_for_server(rospy.Duration(self.detect_objects_server_timeout)):
+            rospy.logerr(f'{name} action server is unavailable after '
+                         f'{self.detect_objects_server_timeout:.1f}s; is AnyGrasp running?')
+            return None
+        client.send_goal(goal, feedback_cb=lambda feedback: rospy.loginfo(f'{name}: {feedback.stage}'))
+        if not client.wait_for_result(rospy.Duration(result_timeout)):
+            client.cancel_goal()
+            rospy.logerr(f'{name} timed out after {result_timeout:.1f}s')
+            return None
+        result = client.get_result()
+        state = client.get_state()
+        if state != GoalStatus.SUCCEEDED or result is None or not result.success:
+            rospy.logwarn(f'{name} did not succeed (state {state}): '
+                          f'{getattr(result, "message", client.get_goal_status_text())}')
+        else:
+            rospy.loginfo(f'{name}: {result.message}')
+        return result
+
+    def detect_proposals(self, object_name: str, query_variants: Optional[List[str]] = None,
+                         max_proposals: int = 3, observation_pose: Optional[str] = None,
+                         box_threshold: float = 0.0, text_threshold: float = 0.0,
+                         return_frame: bool = False) -> Optional[Any]:
+        '''First stage of two-stage open-set perception: capture the current view (optionally
+        after moving the arm to ``observation_pose``), run Grounding DINO for ``object_name``
+        (plus any ``query_variants``, one detector pass) and return the best ``max_proposals``
+        proposals without accepting anything. The result carries ``view_id``, ``camera_pose``
+        and per proposal ``detection_id``, ``score``, ``bbox_xyxy`` and a coarse map-frame
+        ``position``; the node keeps the frame so :meth:`verify_candidates` can build the
+        evidence later. Returns the ``grasplan/DetectObjectsResult`` or None.
+        '''
+        import actionlib
+        from grasplan.msg import DetectObjectsAction, DetectObjectsGoal
+
+        if observation_pose:
+            rospy.loginfo(f'moving arm to {observation_pose} before proposing {object_name!r}')
+            self.arm.move(observation_pose)
+        if self._detect_objects_client is None:
+            self._detect_objects_client = actionlib.SimpleActionClient(
+                self.detect_objects_action_name, DetectObjectsAction)
+        goal = DetectObjectsGoal(object_name=object_name, query_variants=list(query_variants or []),
+                                 box_threshold=box_threshold, text_threshold=text_threshold,
+                                 max_proposals=max_proposals, proposals_only=True,
+                                 return_frame=return_frame)
+        rospy.loginfo(f'open-set proposals for {object_name!r} (top {max_proposals})')
+        return self._run_action(self._detect_objects_client, goal, 'open-set proposals',
+                                self.detect_objects_result_timeout)
+
+    def verify_candidates(self, object_name: str, candidates: List[List[str]],
+                          query_variants: Optional[List[str]] = None, include_full_frames: bool = True,
+                          commit: bool = True) -> Optional[Any]:
+        '''Second stage: verify candidate objects, each given as the list of ``detection_id``s
+        (from one or several :meth:`detect_proposals` views) believed to show the same physical
+        object. Every candidate is judged by one multi-image VLM request; the result holds one
+        ``grasplan/Verdict`` per candidate whose ``status`` separates MATCH / NO_MATCH from
+        verifier failures (TIMEOUT, HTTP_ERROR, NO_CONTENT, BAD_JSON, UNAVAILABLE, ERROR).
+        With ``commit`` accepted candidates are pushed to the pose selector. Returns the
+        ``grasplan/VerifyObjectsResult`` or None.
+        '''
+        import actionlib
+        from grasplan.msg import CandidateGroup, VerifyObjectsAction, VerifyObjectsGoal
+
+        if self._verify_objects_client is None:
+            self._verify_objects_client = actionlib.SimpleActionClient(
+                self.verify_objects_action_name, VerifyObjectsAction)
+        goal = VerifyObjectsGoal(object_name=object_name, query_variants=list(query_variants or []),
+                                 candidates=[CandidateGroup(detection_ids=list(ids)) for ids in candidates],
+                                 include_full_frames=include_full_frames, commit=commit)
+        rospy.loginfo(f'verifying {len(candidates)} candidate(s) of {object_name!r} with the VLM')
+        return self._run_action(self._verify_objects_client, goal, 'open-set verification',
+                                self.verify_objects_result_timeout)
 
     def clear_poses_for_table(self, table: str) -> None:
         # get current facts

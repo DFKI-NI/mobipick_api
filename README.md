@@ -35,6 +35,16 @@ mobipick.arm_cam.perceive(observation_list=['observe100cm_right', 'observe100cm_
 # detections land in the pose selector as <class_id>_<n>; returns grasplan/DetectObjectsResult
 # with 2D boxes/masks, map-frame oriented 3D boxes and the accepted objects, or None if unavailable
 mobipick.arm_cam.detect_open_set('coke can', use_vlm_verifier=True, observation_pose='observe100cm_right')
+# two-stage variant: proposals from several views (nothing accepted yet) ...
+first = mobipick.arm_cam.detect_proposals('coke can', max_proposals=3, observation_pose='observe100cm_right')
+second = mobipick.arm_cam.detect_proposals('coke can', max_proposals=3, observation_pose='inspect100cm_right_low')
+# ... grouped into candidate objects by 3D position (mobipick_api.open_set) and verified once each
+# with a multi-image VLM request; verdict.status tells MATCH / NO_MATCH from verifier failures
+from mobipick_api.open_set import Proposal, group_proposals
+candidates = group_proposals([Proposal(d.detection_id, d.view_id, d.score, d.label, tuple(d.bbox_xyxy),
+                                       (d.position.x, d.position.y, d.position.z) if d.has_position else None)
+                              for r in (first, second) if r for d in r.detections], radius=0.08)
+mobipick.arm_cam.verify_candidates('coke can', [c.detection_ids for c in candidates], commit=True)
 # query 6D pose estimate of a specific object
 mobipick.arm_cam.get_object_pose('multimeter_1')
 # query if a specific object was perceived or not
