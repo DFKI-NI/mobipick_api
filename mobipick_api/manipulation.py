@@ -52,6 +52,8 @@ class Manipulation(Arm):
                     rospy.logerr(f'Failed to pick {object_to_pick}')
             else:
                 rospy.logerr(f'Failed to pick {object_to_pick}, timeout?')
+                # Cancel so the server stops instead of moving the arm after the caller gave up
+                action_client.cancel_goal()
         else:
             rospy.logerr(f'action server {pick_object_server_name} not available')
         return False
@@ -79,6 +81,8 @@ class Manipulation(Arm):
                     rospy.logerr('Failed to place object')
             else:
                 rospy.logerr('Failed to place object, timeout?')
+                # Cancel so the server stops instead of moving the arm after the caller gave up
+                action_client.cancel_goal()
         else:
             rospy.logerr(f'action server {place_object_server_name} not available')
         return False
@@ -107,6 +111,8 @@ class Manipulation(Arm):
                     return False
             else:
                 rospy.logerr(f'Failed to insert object, timeout?')
+                # Cancel so the server stops instead of moving the arm after the caller gave up
+                action_client.cancel_goal()
                 return False
         else:
             rospy.logerr(f'action server {insert_object_server_name} not available')
