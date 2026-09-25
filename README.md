@@ -22,25 +22,39 @@ mobipick.base.move(21.0, 7.0, 3.141592)
 
 Perception:
 ```
-# activate pose selector, collect updates for 5 seconds, deactivate pose selector
-# as DOPE is implemented as a lazy subscriber, activating pose selector means DOPE is activated as well
-# DOPE : Deep Object Pose Estimation
-mobipick.arm_cam.perceive()
-# or
-mobipick.arm_cam.perceive(observation_list=[])
+# perceive: the one perception call, a thin client of the mobipick_active_perception Perceive
+# action (/mobipick/perceive), which does the work. Targets mix known objects (DOPE), open-set descriptions
+# (Grounding DINO) and tables (table_<n>: cached poses on it are cleared, DOPE observes it).
+# DOPE (pose selector) is active for the whole call. confidence (default "high") only matters
+# for open-set targets: "low" = one Grounding DINO view + one VLM verdict, pose not committed;
+# "high" = per target DISC alignment, Grounding DINO, close-up, Grounding DINO + VLM, committed pose.
+# Returns one text: success|partial|failed, then one line per target.
+text = mobipick.arm_cam.perceive(['table_2', 'multimeter', 'tennis ball'], confidence='high')
+# partial:
+# table_2: perceived, table observed with DOPE (confidence does not apply to tables)
+# multimeter: perceived successfully with high confidence (DOPE; multimeter_1 at map (12.31, 3.02, 0.78))
+# tennis ball: failed, VLM verification rejected all 2 candidate(s) (it saw: an orange)
+# options (experimentation): use_vlm=False, align=False, observation_pose='observe100cm_right',
+# dope_only=True or gd_only=True (not both), session_dir='~/sessions/x'
+# Without the Perceive server the old closed-set observation below runs instead (deprecation
+# warning); only targets that are pose selector ids (multimeter_1) can then be confirmed.
 
-# alternatively, define a list of observation poses to visit
+# legacy (deprecated, warns): DOPE for 5 s from the current arm pose or from each listed pose, no result
+mobipick.arm_cam.perceive()
 mobipick.arm_cam.perceive(observation_list=['observe100cm_right', 'observe100cm_front'])
 # open-set detection with AnyGrasp's Grounding DINO + SAM2 (no grasping): accepted
 # detections land in the pose selector as <class_id>_<n>; returns grasplan/DetectObjectsResult
 # with 2D boxes/masks, map-frame oriented 3D boxes and the accepted objects, or None if unavailable
 mobipick.arm_cam.detect_open_set('coke can', use_vlm_verifier=True, observation_pose='observe100cm_right')
-# object-centric open-set perception of the table the robot stands at (mobipick_active_perception
-# InspectTable action): observation view, VLM triage, close-ups of what needs one, confirmed
-# matches committed to the pose selector; with align=True and DISC running the base is first
-# shifted along its heading so the observation view is centred on the object
-result = mobipick.arm_cam.inspect_table(['sugar box', 'coke can'], table='table_1', align=True)
-result.accepted, result.poses          # e.g. ['sugar_box_1'], map-frame PoseStamped per object
+# close-up open-set inspection at the table the robot stands at (mobipick_active_perception
+# InspectObject action; perceive(..., confidence='high') uses it, call it directly only for testing):
+# observation view, VLM triage, close-ups of what needs one, confirmed matches committed to the
+# pose selector; with align=True and DISC running the base is first shifted along its heading so
+# the observation view is centred on the object; use_vlm=False commits the Grounding DINO
+# detections of one close-up instead. table only labels the recorded session.
+# inspect_table(...) is the deprecated old name.
+result = mobipick.arm_cam.inspect_object(['sugar box', 'coke can'], table='table_1', align=True)
+result.accepted, result.poses, result.outcomes   # e.g. ['sugar box_1'], map-frame PoseStamped per object, one line per query
 # the building blocks it uses are clients too: proposals from the current view (nothing accepted)
 # and one multi-image VLM verification per candidate (lists of detection ids)
 first = mobipick.arm_cam.detect_proposals('coke can', max_proposals=5, observation_pose='observe100cm_right')

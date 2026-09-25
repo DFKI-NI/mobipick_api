@@ -43,6 +43,7 @@ def _load_perception_module():
         ROSException=ROSException,
         ServiceException=ServiceException,
         get_param=Mock(side_effect=lambda _name, default: default),
+        Duration=Mock(),
         ServiceProxy=Mock(),
         wait_for_service=Mock(),
         loginfo=Mock(),
@@ -106,6 +107,8 @@ class PerceptionTest(unittest.TestCase):
         self.arm = Mock()
         self.semantic_env_rep = Mock()
         self.perception = self.module.Perception('/', self.arm, self.semantic_env_rep)
+        # no Perceive server here: perceive(targets) takes the old closed-set fallback
+        self.perception._perceive_action_client = Mock(return_value=None)
 
     def test_constructor_always_configures_proxies_without_waiting(self):
         self.assertEqual(5, self.rospy.ServiceProxy.call_count)
@@ -136,6 +139,48 @@ class PerceptionTest(unittest.TestCase):
             self.arm.move.call_args_list)
         activate = self.proxies[self.perception.pose_selector_activate_srv_name]
         self.assertEqual(4, activate.call_count)
+
+    def test_perceive_targets_without_pipeline_falls_back_to_the_old_observation(self):
+        response = types.SimpleNamespace(
+            poses=types.SimpleNamespace(objects=[ObjectPose('multimeter', 1, object())]))
+        self.proxies[self.perception.pose_selector_get_all_poses_srv_name].return_value = response
+
+        with self.assertWarns(DeprecationWarning):
+            text = self.perception.perceive(['multimeter_1', 'tennis ball'], confidence='high')
+
+        lines = text.splitlines()
+        self.assertEqual('partial:', lines[0])
+        self.assertEqual('multimeter_1: perceived with DOPE (multimeter_1 is in the pose selector)', lines[1])
+        self.assertTrue(lines[2].startswith('tennis ball: failed, not verified'))
+        self.arm.move.assert_called_once_with('observe100cm_right')
+        activate = self.proxies[self.perception.pose_selector_activate_srv_name]
+        self.assertEqual([unittest.mock.call(True), unittest.mock.call(False)], activate.call_args_list)
+
+    def test_perceive_forwards_the_request_to_the_perceive_server(self):
+        client = Mock()
+        client.wait_for_result.return_value = True
+        client.get_result.return_value = types.SimpleNamespace(success=False, summary='partial:\nx: failed, y')
+        self.perception._perceive_action_client = Mock(return_value=client)
+        goal_type = Mock(side_effect=lambda **kwargs: types.SimpleNamespace(**kwargs))
+        msg = _module('mobipick_active_perception.msg', PerceiveGoal=goal_type)
+        package = _module('mobipick_active_perception')
+        package.__path__ = []
+        with unittest.mock.patch.dict(sys.modules, {'mobipick_active_perception': package,
+                                                    'mobipick_active_perception.msg': msg}):
+            text = self.perception.perceive(['x', 'table_2'], confidence='low', use_vlm=False)
+
+        self.assertEqual('partial:\nx: failed, y', text)
+        goal = client.send_goal.call_args.args[0]
+        self.assertEqual(['x', 'table_2'], goal.targets)
+        self.assertEqual('low', goal.confidence)
+        self.assertTrue(goal.skip_vlm)
+        self.assertFalse(goal.skip_alignment)
+
+    def test_inspect_table_is_a_deprecated_alias(self):
+        self.perception.inspect_object = Mock(return_value='result')
+        with self.assertWarns(DeprecationWarning):
+            self.assertEqual('result', self.perception.inspect_table(['coke'], table='table_1'))
+        self.perception.inspect_object.assert_called_once()
 
     def test_pose_queries_wait_for_get_all_service(self):
         pose = object()
