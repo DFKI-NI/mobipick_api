@@ -59,3 +59,19 @@ class Robot:
         except rospy.ServiceException as e:
             rospy.logerr(f'UR5 Dashboard Safety Mode Service not available: {e}')
             return False
+
+    def protective_stop_triggered(self) -> bool:
+        """Check if the arm is in a protective stop (e.g. its cable got entangled or it hit something).
+
+        Unlike the emergency stop it is released on the teach pendant; until then the arm cannot move.
+
+        Returns:
+            bool: True while the arm is protective or safeguard stopped, False otherwise.
+        """
+        try:
+            self._emergency_stop_status.wait_for_service(timeout=5.0)
+            mode = self._emergency_stop_status().safety_mode.mode
+            return mode in (SafetyMode.PROTECTIVE_STOP, SafetyMode.SAFEGUARD_STOP)
+        except (rospy.ServiceException, rospy.ROSException) as e:
+            rospy.logerr(f'UR5 Dashboard Safety Mode Service not available: {e}')
+            return False
