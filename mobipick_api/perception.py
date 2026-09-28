@@ -7,6 +7,7 @@ from std_srvs.srv import SetBool, Trigger
 from geometry_msgs.msg import Pose
 from object_pose_msgs.msg import ObjectPose
 from pose_selector.srv import ClassQuery, GetPoses, GetPosesResponse, PoseDelete, PoseDeleteRequest
+from mobipick_api.action_wait import wait_for_result
 from mobipick_api.manipulation import Manipulation
 from mobipick_api.semantic_environment_rep import SemEnvRep
 
@@ -149,9 +150,10 @@ class Perception:
                             observation_pose=observation_pose or '', session_dir=session_dir or '')
         rospy.loginfo(f'perceive {targets} with {goal.confidence} confidence')
         client.send_goal(goal, feedback_cb=feedback_cb or (lambda f: rospy.loginfo(f'perceive: {f.stage}')))
-        if not client.wait_for_result(rospy.Duration(self.perceive_result_timeout)):
+        done, reason = wait_for_result(client, self.perceive_result_timeout)
+        if not done:
             client.cancel_goal()
-            return self._failed(targets, f'the perceive action gave no result within {self.perceive_result_timeout:.0f} s')
+            return self._failed(targets, f'the perceive action failed: {reason}')
         result = client.get_result()
         if result is None or not result.summary:
             return self._failed(targets, f'the perceive action ended without a result ({client.get_goal_status_text()})')
@@ -253,10 +255,10 @@ class Perception:
                               box_threshold=box_threshold, text_threshold=text_threshold,
                               accept_threshold=accept_threshold),
             feedback_cb=lambda feedback: rospy.loginfo(f'open-set detection: {feedback.stage}'))
-        if not client.wait_for_result(rospy.Duration(self.detect_objects_result_timeout)):
+        done, reason = wait_for_result(client, self.detect_objects_result_timeout)
+        if not done:
             client.cancel_goal()
-            rospy.logerr(f'open-set detection of {object_name!r} timed out after '
-                         f'{self.detect_objects_result_timeout:.1f}s')
+            rospy.logerr(f'open-set detection of {object_name!r} failed: {reason}')
             return None
         result = client.get_result()
         state = client.get_state()
@@ -275,9 +277,10 @@ class Perception:
                          f'{self.detect_objects_server_timeout:.1f}s; is AnyGrasp running?')
             return None
         client.send_goal(goal, feedback_cb=lambda feedback: rospy.loginfo(f'{name}: {feedback.stage}'))
-        if not client.wait_for_result(rospy.Duration(result_timeout)):
+        done, reason = wait_for_result(client, result_timeout)
+        if not done:
             client.cancel_goal()
-            rospy.logerr(f'{name} timed out after {result_timeout:.1f}s')
+            rospy.logerr(f'{name} failed: {reason}')
             return None
         result = client.get_result()
         state = client.get_state()
@@ -378,9 +381,9 @@ class Perception:
             rospy.logerr(f'action server {self.inspect_object_action_name} not available')
             return None
         self._inspect_object_client.send_goal(goal, feedback_cb=feedback_cb)
-        if not self._inspect_object_client.wait_for_result(rospy.Duration(self.inspect_object_result_timeout)):
-            rospy.logerr(f'{self.inspect_object_action_name}: no result within '
-                         f'{self.inspect_object_result_timeout:.0f}s')
+        done, reason = wait_for_result(self._inspect_object_client, self.inspect_object_result_timeout)
+        if not done:
+            rospy.logerr(f'{self.inspect_object_action_name}: {reason}')
             self._inspect_object_client.cancel_goal()
             return None
         result = self._inspect_object_client.get_result()
