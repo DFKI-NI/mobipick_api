@@ -5,7 +5,7 @@ import os
 import sys
 import types
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 
 def _module(name, **attributes):
@@ -90,7 +90,7 @@ def _load_manipulation_module():
     sys.modules.update(stubs)
     try:
         sys.modules.pop('mobipick_api.manipulation', None)
-        return importlib.import_module('mobipick_api.manipulation')
+        return importlib.import_module('mobipick_api.manipulation'), stubs['rospy']
     finally:
         for name, module in saved.items():
             if module is None:
@@ -104,9 +104,13 @@ class TestManipulationMessage(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.module = _load_manipulation_module()
+        cls.module, cls.rospy = _load_manipulation_module()
 
     def setUp(self):
+        # action_wait's fallback wait (used for this stand-in client) imports rospy when called
+        patcher = patch.dict(sys.modules, {'rospy': self.rospy})
+        patcher.start()
+        self.addCleanup(patcher.stop)
         _ActionClient.instances = []
         _ActionClient.available, _ActionClient.finished = True, True
         _ActionClient.success, _ActionClient.status_text = False, ''
@@ -126,7 +130,15 @@ class TestManipulationMessage(unittest.TestCase):
     def test_place_timeout_is_reported_and_cancelled(self):
         _ActionClient.finished = False
         self.assertFalse(self.arm.place_object('table_2', timeout=30.0))
-        self.assertIn('timeout of 30.0 s', self.arm.last_manipulation_message)
+        self.assertEqual('no result within 30 s, goal cancelled', self.arm.last_manipulation_message)
+        self.assertTrue(_ActionClient.instances[-1].cancelled)
+
+    def test_dead_pick_server_is_reported_and_cancelled(self):
+        # the shared wait notices a dead server (#42): its reason reaches the caller instead of a timeout
+        reason = 'the action server stopped answering (no status for 10 s): its node probably died'
+        with patch.object(self.module, 'wait_for_result', lambda client, timeout: (False, reason)):
+            self.assertFalse(self.arm.pick_object('apple', 'table_1'))
+        self.assertEqual(f'{reason}, goal cancelled', self.arm.last_manipulation_message)
         self.assertTrue(_ActionClient.instances[-1].cancelled)
 
     def test_missing_server_is_reported(self):
