@@ -12,6 +12,13 @@ class Manipulation(Arm):
     def __init__(self, namespace: str, connect_manipulation_on_init):
         super().__init__(namespace, connect_manipulation_on_init)
         self.namespace = namespace
+        # why the last pick/place/insert succeeded or failed (the grasplan action status text, a timeout or a missing
+        # server), for callers that need more than the returned bool, e.g. to tell a person why a pick failed
+        self.last_manipulation_message = ''
+
+    @staticmethod
+    def _status_text(action_client) -> str:
+        return (action_client.get_goal_status_text() or '').strip()
 
     def pick_object(self, object_to_pick: str, support_surface_name: str, planning_scene_ignore_list: Optional[List[str]] = None,
                     timeout: float=50.0, pick_object_server_name: str='pick_object') -> bool:
@@ -24,6 +31,7 @@ class Manipulation(Arm):
         '''
         if planning_scene_ignore_list is None:
             planning_scene_ignore_list = []
+        self.last_manipulation_message = ''
         pick_object_server_name = self.namespace + pick_object_server_name
         action_client = actionlib.SimpleActionClient(pick_object_server_name, PickObjectAction)
         rospy.loginfo(f'waiting for {pick_object_server_name} action server')
@@ -44,6 +52,7 @@ class Manipulation(Arm):
             rospy.loginfo(f'waiting for result from {pick_object_server_name} action server')
             if action_client.wait_for_result(rospy.Duration.from_sec(timeout)):
                 result: InsertObjectResult = action_client.get_result()
+                self.last_manipulation_message = self._status_text(action_client)
                 rospy.loginfo(f'{pick_object_server_name} is done with execution, resuĺt was = "{result}"')
                 if result.success:
                     rospy.loginfo(f'Succesfully picked {object_to_pick}')
@@ -54,12 +63,15 @@ class Manipulation(Arm):
                 rospy.logerr(f'Failed to pick {object_to_pick}, timeout?')
                 # Cancel so the server stops instead of moving the arm after the caller gave up
                 action_client.cancel_goal()
+                self.last_manipulation_message = f'no result within the timeout of {timeout} s, goal cancelled'
         else:
             rospy.logerr(f'action server {pick_object_server_name} not available')
+            self.last_manipulation_message = f'action server {pick_object_server_name} not available'
         return False
 
     def place_object(self, support_surface_name: str, observe_before_place: bool=False, timeout: float=50.0,
                      place_object_server_name: str='place_object') -> bool:
+        self.last_manipulation_message = ''
         place_object_server_name = self.namespace + place_object_server_name
         action_client = actionlib.SimpleActionClient(place_object_server_name, PlaceObjectAction)
         rospy.loginfo(f'waiting for {place_object_server_name} action server')
@@ -73,6 +85,7 @@ class Manipulation(Arm):
             rospy.loginfo(f'waiting for result from {place_object_server_name} action server')
             if action_client.wait_for_result(rospy.Duration.from_sec(timeout)):
                 result: InsertObjectResult = action_client.get_result()
+                self.last_manipulation_message = self._status_text(action_client)
                 rospy.loginfo(f'{place_object_server_name} is done with execution, resuĺt was = "{result}"')
                 if result.success:
                     rospy.loginfo('Succesfully placed object')
@@ -83,12 +96,15 @@ class Manipulation(Arm):
                 rospy.logerr('Failed to place object, timeout?')
                 # Cancel so the server stops instead of moving the arm after the caller gave up
                 action_client.cancel_goal()
+                self.last_manipulation_message = f'no result within the timeout of {timeout} s, goal cancelled'
         else:
             rospy.logerr(f'action server {place_object_server_name} not available')
+            self.last_manipulation_message = f'action server {place_object_server_name} not available'
         return False
 
     def insert_object(self, container: str, observe_before_insert: bool=False, timeout: float=50.0,
                       insert_object_server_name: str='insert_object') -> bool:
+        self.last_manipulation_message = ''
         insert_object_server_name = self.namespace + insert_object_server_name
         action_client = actionlib.SimpleActionClient(insert_object_server_name, InsertObjectAction)
         rospy.loginfo(f'waiting for {insert_object_server_name} action server')
@@ -102,6 +118,7 @@ class Manipulation(Arm):
             rospy.loginfo(f'waiting for result from {insert_object_server_name} action server')
             if action_client.wait_for_result(rospy.Duration.from_sec(timeout)):
                 result: InsertObjectResult = action_client.get_result()
+                self.last_manipulation_message = self._status_text(action_client)
                 rospy.loginfo(f'{insert_object_server_name} is done with execution, resuĺt was = "{result}"')
                 if result.success:
                     rospy.loginfo(f'Succesfully inserted object')
@@ -113,7 +130,9 @@ class Manipulation(Arm):
                 rospy.logerr(f'Failed to insert object, timeout?')
                 # Cancel so the server stops instead of moving the arm after the caller gave up
                 action_client.cancel_goal()
+                self.last_manipulation_message = f'no result within the timeout of {timeout} s, goal cancelled'
                 return False
         else:
             rospy.logerr(f'action server {insert_object_server_name} not available')
+            self.last_manipulation_message = f'action server {insert_object_server_name} not available'
         return False
