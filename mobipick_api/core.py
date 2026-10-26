@@ -19,6 +19,10 @@ from mobipick_api.table_matcher import TableMatcher
 from ur_dashboard_msgs.srv import GetSafetyMode, GetRobotMode
 from ur_dashboard_msgs.msg import SafetyMode, RobotMode
 
+
+class SafetyStateUnknown(RuntimeError):
+    """The UR dashboard could not be asked (service missing or failing): the arm may be stopped, nobody knows."""
+
 class Robot:
     def __init__(self, namespace: str=rospy.get_namespace(), connect_navigation_on_init: bool=False,
             connect_manipulation_on_init: bool=False) -> None:
@@ -49,6 +53,9 @@ class Robot:
 
         Returns:
             bool: True if emergency stop is triggered, False otherwise.
+
+        Raises:
+            SafetyStateUnknown: the dashboard could not be asked; this is not the same as "no stop".
         """
         try:
             self._emergency_stop_status.wait_for_service(timeout=5.0)
@@ -56,9 +63,9 @@ class Robot:
             status_response = self._emergency_stop_status()
             robot_mode_response = self._robot_mode_status()
             return status_response.safety_mode.mode == SafetyMode.ROBOT_EMERGENCY_STOP or robot_mode_response.robot_mode.mode == RobotMode.POWER_OFF
-        except rospy.ServiceException as e:
+        except (rospy.ServiceException, rospy.ROSException) as e:
             rospy.logerr(f'UR5 Dashboard Safety Mode Service not available: {e}')
-            return False
+            raise SafetyStateUnknown(f'UR dashboard safety mode service not available: {e}') from e
 
     def protective_stop_triggered(self) -> bool:
         """Check if the arm is in a protective stop (e.g. its cable got entangled or it hit something).
@@ -67,6 +74,9 @@ class Robot:
 
         Returns:
             bool: True while the arm is protective or safeguard stopped, False otherwise.
+
+        Raises:
+            SafetyStateUnknown: the dashboard could not be asked; this is not the same as "no stop".
         """
         try:
             self._emergency_stop_status.wait_for_service(timeout=5.0)
@@ -74,4 +84,4 @@ class Robot:
             return mode in (SafetyMode.PROTECTIVE_STOP, SafetyMode.SAFEGUARD_STOP)
         except (rospy.ServiceException, rospy.ROSException) as e:
             rospy.logerr(f'UR5 Dashboard Safety Mode Service not available: {e}')
-            return False
+            raise SafetyStateUnknown(f'UR dashboard safety mode service not available: {e}') from e
