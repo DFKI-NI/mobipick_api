@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import functools
 from typing import List, Optional
 import rospy
 import actionlib
@@ -8,6 +9,23 @@ from robot_api.extensions import Arm
 from grasplan.msg import PickObjectAction, PickObjectGoal, PlaceObjectAction
 from grasplan.msg import PlaceObjectGoal, InsertObjectAction, InsertObjectGoal, InsertObjectResult
 from mobipick_api.action_wait import wait_for_result
+
+CANCELLED_ON_REQUEST = 'cancelled on request'
+GOAL_PREEMPTED, GOAL_RECALLED = 2, 8  # actionlib_msgs/GoalStatus values
+
+
+def _cancellable(method):
+    """a cancel request belongs to one command: none is left over from the last one, and when the command ends
+    (whatever way) there is nothing in progress any more to cancel"""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        self._cancel_requested = False
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self._active_action_client = None
+    return wrapper
+
 
 class Manipulation(Arm):
     def __init__(self, namespace: str, connect_manipulation_on_init):
@@ -18,19 +36,34 @@ class Manipulation(Arm):
         self.last_manipulation_message = ''
         # action client of the pick, place or insert in progress, for cancel_manipulation() from another thread
         self._active_action_client = None
+        self._cancel_requested = False
 
     def cancel_manipulation(self) -> bool:
-        '''ask the server of the pick, place or insert in progress to stop; False when none was started'''
+        '''ask the server of the pick, place or insert in progress to stop; False when none is in progress. A cancel that
+        comes before the goal is sent (while the action server is still being looked for) stops the command at once.'''
         client = self._active_action_client
         if client is None:
             return False
+        self._cancel_requested = True
         client.cancel_goal()
+        return True
+
+    def _cancelled_before_sending(self) -> bool:
+        if not self._cancel_requested:
+            return False
+        self.last_manipulation_message = CANCELLED_ON_REQUEST
         return True
 
     @staticmethod
     def _status_text(action_client) -> str:
-        return (action_client.get_goal_status_text() or '').strip()
+        text = (action_client.get_goal_status_text() or '').strip()
+        # grasplan answers a cancel with a bare preempted goal: say what happened instead of an empty reason
+        get_state = getattr(action_client, 'get_state', None)
+        if not text and get_state is not None and get_state() in (GOAL_PREEMPTED, GOAL_RECALLED):
+            return CANCELLED_ON_REQUEST
+        return text
 
+    @_cancellable
     def pick_object(self, object_to_pick: str, support_surface_name: str, planning_scene_ignore_list: Optional[List[str]] = None,
                     timeout: float=50.0, pick_object_server_name: str='pick_object') -> bool:
         '''
@@ -60,6 +93,8 @@ class Manipulation(Arm):
             else:
                 rospy.loginfo('all objects are taken into account in planning scene')
             rospy.loginfo(f'sending goal to {pick_object_server_name} action server')
+            if self._cancelled_before_sending():
+                return False
             action_client.send_goal(goal)
             rospy.loginfo(f'waiting for result from {pick_object_server_name} action server')
             # gives up early when the grasplan server dies instead of waiting the whole timeout
@@ -83,6 +118,7 @@ class Manipulation(Arm):
             self.last_manipulation_message = f'action server {pick_object_server_name} not available'
         return False
 
+    @_cancellable
     def place_object(self, support_surface_name: str, observe_before_place: bool=False, timeout: float=50.0,
                      place_object_server_name: str='place_object') -> bool:
         self.last_manipulation_message = ''
@@ -96,6 +132,8 @@ class Manipulation(Arm):
             goal.support_surface_name = support_surface_name
             goal.observe_before_place = observe_before_place
             rospy.loginfo(f'sending place goal to {place_object_server_name} action server')
+            if self._cancelled_before_sending():
+                return False
             action_client.send_goal(goal)
             rospy.loginfo(f'waiting for result from {place_object_server_name} action server')
             # gives up early when the grasplan server dies instead of waiting the whole timeout
@@ -119,6 +157,7 @@ class Manipulation(Arm):
             self.last_manipulation_message = f'action server {place_object_server_name} not available'
         return False
 
+    @_cancellable
     def insert_object(self, container: str, observe_before_insert: bool=False, timeout: float=50.0,
                       insert_object_server_name: str='insert_object') -> bool:
         self.last_manipulation_message = ''
@@ -132,6 +171,8 @@ class Manipulation(Arm):
             goal.support_surface_name = container
             goal.observe_before_insert = observe_before_insert
             rospy.loginfo(f'sending insert goal to {insert_object_server_name} action server')
+            if self._cancelled_before_sending():
+                return False
             action_client.send_goal(goal)
             rospy.loginfo(f'waiting for result from {insert_object_server_name} action server')
             # gives up early when the grasplan server dies instead of waiting the whole timeout

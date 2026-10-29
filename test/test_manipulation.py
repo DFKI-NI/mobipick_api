@@ -33,6 +33,8 @@ class _ActionClient:
     finished = True
     success = False
     status_text = ''
+    state = 3  # SUCCEEDED
+    during_wait_for_server = None  # a callable run while the server is looked for (a cancel from another thread)
 
     def __init__(self, name, action_type):
         self.name = name
@@ -40,6 +42,8 @@ class _ActionClient:
         _ActionClient.instances.append(self)
 
     def wait_for_server(self, timeout=None):
+        if self.during_wait_for_server:
+            self.during_wait_for_server()
         return self.available
 
     def send_goal(self, goal):
@@ -53,6 +57,9 @@ class _ActionClient:
 
     def get_goal_status_text(self):
         return self.status_text
+
+    def get_state(self):
+        return self.state
 
     def cancel_goal(self):
         self.cancelled = True
@@ -114,14 +121,46 @@ class TestManipulationMessage(unittest.TestCase):
         _ActionClient.instances = []
         _ActionClient.available, _ActionClient.finished = True, True
         _ActionClient.success, _ActionClient.status_text = False, ''
+        _ActionClient.state, _ActionClient.during_wait_for_server = 3, None
         self.arm = self.module.Manipulation('/mobipick/', False)
 
     def test_cancel_manipulation_cancels_the_goal_of_the_pick_in_progress(self):
         self.assertFalse(self.arm.cancel_manipulation())  # nothing started
+        cancels = []
+
+        def cancel_while_waiting(client, timeout):
+            cancels.append(self.arm.cancel_manipulation())
+            return True, ''
+        _ActionClient.success = True
+        with patch.object(self.module, 'wait_for_result', cancel_while_waiting):
+            self.arm.pick_object('multimeter_1', 'table_1')
+        self.assertEqual(cancels, [True])
+        self.assertTrue(_ActionClient.instances[-1].cancelled)
+
+    def test_cancel_after_the_command_ended_has_nothing_to_cancel(self):
         _ActionClient.success = True
         self.arm.pick_object('multimeter_1', 'table_1')
-        self.assertTrue(self.arm.cancel_manipulation())
-        self.assertTrue(_ActionClient.instances[-1].cancelled)
+        self.assertFalse(self.arm.cancel_manipulation())
+        self.assertFalse(_ActionClient.instances[-1].cancelled)
+
+    def test_cancel_while_the_server_is_looked_for_stops_the_command_before_it_is_sent(self):
+        _ActionClient.during_wait_for_server = self.arm.cancel_manipulation
+        self.assertFalse(self.arm.place_object('table_2'))
+        self.assertFalse(hasattr(_ActionClient.instances[-1], 'goal'))
+        self.assertEqual(self.arm.last_manipulation_message, 'cancelled on request')
+        self.assertFalse(self.arm.cancel_manipulation())
+
+    def test_a_cancel_of_one_command_does_not_stop_the_next(self):
+        _ActionClient.during_wait_for_server = self.arm.cancel_manipulation
+        self.arm.insert_object('klt_1')
+        _ActionClient.during_wait_for_server = None
+        _ActionClient.success = True
+        self.assertTrue(self.arm.insert_object('klt_1'))
+
+    def test_a_preempted_goal_without_text_says_it_was_cancelled(self):
+        _ActionClient.status_text, _ActionClient.state = '', 2  # PREEMPTED
+        self.assertFalse(self.arm.pick_object('apple', 'table_1'))
+        self.assertEqual(self.arm.last_manipulation_message, 'cancelled on request')
 
     def test_failed_pick_keeps_the_action_status_text(self):
         _ActionClient.status_text = 'AnyGrasp generation failed: No grasp candidates were found'
