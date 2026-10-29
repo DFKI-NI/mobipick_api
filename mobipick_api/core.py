@@ -12,6 +12,7 @@ else:
 from mobipick_api.navigation import Navigation
 from mobipick_api.perception import Perception
 from mobipick_api.manipulation import Manipulation
+from mobipick_api.gripper import Gripper
 from mobipick_api.semantic_environment_rep import SemEnvRep
 from mobipick_api.hri import HRI
 from mobipick_api.table_matcher import TableMatcher
@@ -35,6 +36,7 @@ class Robot:
         self.namespace = namespace
         self.base = Navigation(namespace, connect_navigation_on_init)
         self.arm = Manipulation(namespace, connect_manipulation_on_init)
+        self.gripper = Gripper(namespace)
         self.semantic_env_rep = SemEnvRep(namespace)
         self.arm_cam = Perception(namespace, self.arm, self.semantic_env_rep)
         self.hri = HRI(namespace)

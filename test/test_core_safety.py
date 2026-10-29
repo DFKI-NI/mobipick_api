@@ -33,7 +33,7 @@ def _load_core():
     rospy = _module('rospy', logerr=Mock(), get_namespace=lambda: '/', ServiceException=_ServiceException, ROSException=_ROSException)
     names = ('rospy', 'robot_api', 'robot_api.lib', 'ur_dashboard_msgs', 'ur_dashboard_msgs.srv',
              'ur_dashboard_msgs.msg', 'mobipick_api.navigation', 'mobipick_api.perception',
-             'mobipick_api.manipulation', 'mobipick_api.semantic_environment_rep', 'mobipick_api.hri',
+             'mobipick_api.manipulation', 'mobipick_api.gripper', 'mobipick_api.semantic_environment_rep', 'mobipick_api.hri',
              'mobipick_api.table_matcher')
     stubs = {
         'rospy': rospy,
@@ -46,6 +46,7 @@ def _load_core():
         'mobipick_api.perception': _module('mobipick_api.perception', Perception=object),
         'mobipick_api.manipulation': _module('mobipick_api.manipulation', Manipulation=object),
         'mobipick_api.semantic_environment_rep': _module('mobipick_api.semantic_environment_rep', SemEnvRep=object),
+        'mobipick_api.gripper': _module('mobipick_api.gripper', Gripper=object),
         'mobipick_api.hri': _module('mobipick_api.hri', HRI=object),
         'mobipick_api.table_matcher': _module('mobipick_api.table_matcher', TableMatcher=object),
     }
