@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 '''
-Base navigation that keeps why the last move_base goal ended (#83).
+Base navigation that keeps why the last move_base goal ended.
 
 robot_api's Base.move_to_waypoint() returns only the goal state (3 = SUCCEEDED); a failed navigate told the planner
 nothing. Navigation records move_base's status text ("Failed to find a valid plan. Even after executing all recovery

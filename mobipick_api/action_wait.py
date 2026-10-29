@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 '''
-Wait for an actionlib result without hanging on a dead server (#42).
+Wait for an actionlib result without hanging on a dead server.
 
 SimpleActionClient.wait_for_result() does not notice a server whose node died: the caller (e.g. the planner's
 perceive tool) then blocks for the whole timeout (up to an hour for perceive). wait_for_result() here waits in short

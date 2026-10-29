@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''mobipick_api.action_wait (#42), no ROS: python3 -m pytest test/test_action_wait.py'''
+'''mobipick_api.action_wait, no ROS: python3 -m pytest test/test_action_wait.py'''
 import importlib.util
 import os
 import unittest

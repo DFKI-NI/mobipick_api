@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''mobipick_api.navigation (#83): last_navigation_message tells callers why a navigate ended. No ROS: python3 -m pytest test'''
+'''mobipick_api.navigation: last_navigation_message tells callers why a navigate ended. No ROS: python3 -m pytest test'''
 
 import importlib
 import os

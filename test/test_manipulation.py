@@ -100,7 +100,7 @@ def _load_manipulation_module():
 
 
 class TestManipulationMessage(unittest.TestCase):
-    """last_manipulation_message tells callers why a pick, place or insert failed (#145)."""
+    """last_manipulation_message tells callers why a pick, place or insert failed."""
 
     @classmethod
     def setUpClass(cls):
@@ -134,7 +134,7 @@ class TestManipulationMessage(unittest.TestCase):
         self.assertTrue(_ActionClient.instances[-1].cancelled)
 
     def test_dead_pick_server_is_reported_and_cancelled(self):
-        # the shared wait notices a dead server (#42): its reason reaches the caller instead of a timeout
+        # the shared wait notices a dead server: its reason reaches the caller instead of a timeout
         reason = 'the action server stopped answering (no status for 10 s): its node probably died'
         with patch.object(self.module, 'wait_for_result', lambda client, timeout: (False, reason)):
             self.assertFalse(self.arm.pick_object('apple', 'table_1'))

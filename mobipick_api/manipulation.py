@@ -51,7 +51,7 @@ class Manipulation(Arm):
             rospy.loginfo(f'sending goal to {pick_object_server_name} action server')
             action_client.send_goal(goal)
             rospy.loginfo(f'waiting for result from {pick_object_server_name} action server')
-            # gives up early when the grasplan server dies instead of waiting the whole timeout (#42)
+            # gives up early when the grasplan server dies instead of waiting the whole timeout
             done, reason = wait_for_result(action_client, timeout)
             if done:
                 result: InsertObjectResult = action_client.get_result()
@@ -86,7 +86,7 @@ class Manipulation(Arm):
             rospy.loginfo(f'sending place goal to {place_object_server_name} action server')
             action_client.send_goal(goal)
             rospy.loginfo(f'waiting for result from {place_object_server_name} action server')
-            # gives up early when the grasplan server dies instead of waiting the whole timeout (#42)
+            # gives up early when the grasplan server dies instead of waiting the whole timeout
             done, reason = wait_for_result(action_client, timeout)
             if done:
                 result: InsertObjectResult = action_client.get_result()
@@ -121,7 +121,7 @@ class Manipulation(Arm):
             rospy.loginfo(f'sending insert goal to {insert_object_server_name} action server')
             action_client.send_goal(goal)
             rospy.loginfo(f'waiting for result from {insert_object_server_name} action server')
-            # gives up early when the grasplan server dies instead of waiting the whole timeout (#42)
+            # gives up early when the grasplan server dies instead of waiting the whole timeout
             done, reason = wait_for_result(action_client, timeout)
             if done:
                 result: InsertObjectResult = action_client.get_result()
