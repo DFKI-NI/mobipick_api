@@ -197,6 +197,41 @@ class PerceptionTest(unittest.TestCase):
         self.assertTrue(goal.skip_vlm)
         self.assertFalse(goal.skip_alignment)
 
+    def _send(self, goal_type=None, **kwargs):
+        client = Mock()
+        client.wait_for_result.return_value = True
+        client.get_result.return_value = types.SimpleNamespace(success=True, summary='success:\ntable_1: perceived')
+        self.perception._perceive_action_client = Mock(return_value=client)
+        goal_type = goal_type or Mock(side_effect=lambda **fields: types.SimpleNamespace(**fields))
+        msg = _module('mobipick_active_perception.msg', PerceiveGoal=goal_type)
+        package = _module('mobipick_active_perception')
+        package.__path__ = []
+        with unittest.mock.patch.dict(sys.modules, {'mobipick_active_perception': package,
+                                                    'mobipick_active_perception.msg': msg}):
+            text = self.perception.perceive(['table_1'], **kwargs)
+        return text, client
+
+    def test_perceive_full_view_goes_into_the_goal(self):
+        text, client = self._send(view='full')
+        self.assertEqual('full', client.send_goal.call_args.args[0].view)
+        text, client = self._send()
+        self.assertFalse(hasattr(client.send_goal.call_args.args[0], 'view'))   # quick: the field stays empty
+
+    def test_perceive_unknown_view_is_a_plain_failure_text(self):
+        text, client = self._send(view='wide')
+        self.assertEqual("failed:\ntable_1: failed, view must be 'quick' (one view of a table) or 'full' (several "
+                         "views of a table), not 'wide'", text)
+        client.send_goal.assert_not_called()
+
+    def test_perceive_full_view_with_an_old_action_says_rebuild(self):
+        def old_goal(**fields):
+            if 'view' in fields:
+                raise AttributeError('view')
+            return types.SimpleNamespace(**fields)
+        text, client = self._send(goal_type=old_goal, view='full')
+        self.assertIn('needs a Perceive action with the view field: rebuild mobipick_active_perception', text)
+        client.send_goal.assert_not_called()
+
     def test_inspect_table_is_a_deprecated_alias(self):
         self.perception.inspect_object = Mock(return_value='result')
         with self.assertWarns(DeprecationWarning):

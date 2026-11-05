@@ -116,7 +116,8 @@ class Perception:
     def perceive(self, targets: Optional[Sequence[str]] = None, confidence: str = 'high', *,
                  dope_only: bool = False, gd_only: bool = False, use_vlm: bool = True, align: bool = True,
                  observation_pose: Optional[str] = None, session_dir: str = '',
-                 observation_list: Optional[List[str]] = None, feedback_cb: Optional[Any] = None) -> Optional[str]:
+                 observation_list: Optional[List[str]] = None, feedback_cb: Optional[Any] = None,
+                 view: str = 'quick') -> Optional[str]:
         '''Perceive ``targets`` and return one human readable text with a line per target.
 
         A thin client of the ``mobipick_active_perception`` Perceive action (``/mobipick/perceive``),
@@ -125,7 +126,10 @@ class Perception:
         ``confidence`` (default ``high``) matters for open-set targets only (``low``: one detector
         view, nothing committed; ``high``: close-up inspection, VLM verification, committed pose).
         ``dope_only`` / ``gd_only`` (not both), ``use_vlm``, ``align`` and ``observation_pose`` are
-        passed through. The text starts with ``success:``, ``partial:`` or ``failed:``.
+        passed through. ``view`` matters for table targets only: ``quick`` (default) is one view from the
+        observation pose, ``full`` asks the server for several views of the table (where it supports
+        that; it says in the text when it took only one). The text starts with ``success:``,
+        ``partial:`` or ``failed:``.
 
         Without the Perceive server the old closed-set observation runs instead (deprecated) and
         only targets that are pose selector ids can be confirmed.
@@ -147,11 +151,22 @@ class Perception:
             _deprecated(f'the active perception pipeline ({self.perceive_action_name}, mobipick_active_perception) '
                         'is not running: perceive falls back to the old closed-set observation')
             return self._perceive_without_pipeline(targets, observation_pose)
+        view = (view or 'quick').strip().lower()
+        if view not in ('quick', 'full'):
+            return self._failed(targets, f"view must be 'quick' (one view of a table) or 'full' (several views of "
+                                         f"a table), not '{view}'")
         from mobipick_active_perception.msg import PerceiveGoal
 
-        goal = PerceiveGoal(targets=targets, confidence=confidence or 'high', dope_only=bool(dope_only),
-                            gd_only=bool(gd_only), skip_vlm=not use_vlm, skip_alignment=not align,
-                            observation_pose=observation_pose or '', session_dir=session_dir or '')
+        fields = dict(targets=targets, confidence=confidence or 'high', dope_only=bool(dope_only),
+                      gd_only=bool(gd_only), skip_vlm=not use_vlm, skip_alignment=not align,
+                      observation_pose=observation_pose or '', session_dir=session_dir or '')
+        if view != 'quick':
+            fields['view'] = view   # a quick view also works with a Perceive action built before this field
+        try:
+            goal = PerceiveGoal(**fields)
+        except AttributeError:
+            return self._failed(targets, f"view='{view}' needs a Perceive action with the view field: rebuild "
+                                         'mobipick_active_perception')
         rospy.loginfo(f'perceive {targets} with {goal.confidence} confidence')
         client.send_goal(goal, feedback_cb=feedback_cb or (lambda f: rospy.loginfo(f'perceive: {f.stage}')))
         done, reason = wait_for_result(client, self.perceive_result_timeout)
