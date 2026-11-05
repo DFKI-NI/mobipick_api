@@ -156,6 +156,27 @@ class PerceptionTest(unittest.TestCase):
         activate = self.proxies[self.perception.pose_selector_activate_srv_name]
         self.assertEqual([unittest.mock.call(True), unittest.mock.call(False)], activate.call_args_list)
 
+    def test_observation_capture_after_the_arm_move_when_a_service_is_set(self):
+        order = []
+        self.arm.move.side_effect = lambda pose: order.append(('move', pose))
+        capture = Mock(return_value=types.SimpleNamespace(success=True, message='keyframe published'))
+        self.rospy.ServiceProxy.side_effect = lambda name, _type: (
+            order.append(('capture', name)) or capture if name == '/capture' else self.proxies.setdefault(name, Mock()))
+        self.perception.observation_capture_service = '/capture'
+        self.perception.perceive(observation_list=['left'])
+        self.assertEqual([('move', 'left'), ('capture', '/capture')], order)
+        capture.assert_called_once_with()
+
+    def test_observation_capture_failure_is_a_sentence_not_an_error(self):
+        self.perception.observation_capture_service = '/capture'
+        self.rospy.wait_for_service.side_effect = ROSException('timeout exceeded')
+        text = self.perception._capture_observation()
+        self.assertEqual('observation capture failed: the service /capture did not answer (timeout exceeded)', text)
+
+    def test_no_observation_capture_by_default(self):
+        self.assertEqual('', self.perception.observation_capture_service)
+        self.assertIsNone(self.perception._capture_observation())
+
     def test_perceive_forwards_the_request_to_the_perceive_server(self):
         client = Mock()
         client.wait_for_result.return_value = True

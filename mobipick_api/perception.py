@@ -56,6 +56,10 @@ class Perception:
         self._perceive_client = None
         # arm pose of the fallback DOPE observation when the Perceive server is not running
         self.perception_observation_pose = rospy.get_param('~perception_observation_pose', 'observe100cm_right')
+        # optional std_srvs/Trigger service called once the arm stands at an observation pose of the old
+        # closed-set observation (e.g. a mapping node that captures one camera frame of the still view); empty = off
+        self.observation_capture_service = str(rospy.get_param('~observation_capture_service', ''))
+        self.observation_capture_settle_s = float(rospy.get_param('~observation_capture_settle_s', 0.3))
         self._verify_objects_client = None
 
         # Creating a rospy ServiceProxy does not contact the service.  Always create
@@ -202,7 +206,26 @@ class Perception:
             rospy.loginfo(f'moving arm to {observation_pose}')
             # move arm to observation pose
             self.arm.move(observation_pose)
+            self._capture_observation()
             self._perceive_without_moving_arm()
+
+    def _capture_observation(self) -> Optional[str]:
+        '''Call ``observation_capture_service`` (if set) once the arm settled at the observation pose.
+        Returns what happened as a sentence (None when no service is set); a failure is logged, never raised.'''
+        name = self.observation_capture_service
+        if not name:
+            return None
+        rospy.sleep(max(0.0, self.observation_capture_settle_s))
+        try:
+            rospy.wait_for_service(name, timeout=0.5)
+            response = rospy.ServiceProxy(name, Trigger)()
+        except (rospy.ROSException, rospy.ServiceException) as exc:
+            text = f'observation capture failed: the service {name} did not answer ({exc})'
+            rospy.logwarn(text)
+            return text
+        text = f'observation capture: {response.message}'
+        (rospy.loginfo if response.success else rospy.logwarn)(text)
+        return text
 
     def _perceive_without_moving_arm(self) -> None:
         rospy.loginfo(f'perceiving objects')
