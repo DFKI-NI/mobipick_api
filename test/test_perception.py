@@ -277,5 +277,54 @@ class PerceptionTest(unittest.TestCase):
             self.perception.get_object_pose('multimeter_1')
 
 
+    # -------------------------------------------------- pose selector call timing
+    def _logged(self, log):
+        return '\n'.join(str(c.args[0]) for c in log.call_args_list)
+
+    def _timed_get_all(self, wait_s=0.0, call_s=0.0, wait_error=None):
+        """Call the get_all service on a fake clock: the readiness wait takes ``wait_s`` (or
+        raises ``wait_error`` after it), the call itself ``call_s``."""
+        clock = [100.0]
+
+        def wait_for_service(_name, timeout):
+            clock[0] += wait_s
+            if wait_error is not None:
+                raise wait_error
+
+        def call():
+            clock[0] += call_s
+            return 'response'
+
+        self.rospy.wait_for_service.side_effect = wait_for_service
+        self.proxies[self.perception.pose_selector_get_all_poses_srv_name].side_effect = call
+        fake_time = types.SimpleNamespace(monotonic=lambda: clock[0])
+        with unittest.mock.patch.object(self.module, 'time', fake_time):
+            return self.perception._call_pose_selector_service(
+                self.perception.pose_selector_get_all_poses_srv_name,
+                self.proxies[self.perception.pose_selector_get_all_poses_srv_name])
+
+    def test_slow_pose_selector_call_warns_with_wait_and_call_time(self):
+        self.assertEqual('response', self._timed_get_all(wait_s=0.3, call_s=1.2))
+        self.rospy.logwarn.assert_called_once_with(
+            'pose selector call /pick_pose_selector_node/pose_selector_get_all took 1.5 s '
+            '(0.3 s waiting for the service, 1.2 s in the call)')
+        self.assertIn('0.300 s waiting for the service, 1.200 s in the call',
+                      self._logged(self.rospy.logdebug))
+
+    def test_fast_pose_selector_call_only_logs_debug_timing(self):
+        self.assertEqual('response', self._timed_get_all(wait_s=0.1, call_s=0.2))
+        self.rospy.logwarn.assert_not_called()
+        self.assertIn('pose_selector_get_all (ok): 0.100 s waiting for the service, 0.200 s in the call',
+                      self._logged(self.rospy.logdebug))
+
+    def test_unavailable_pose_selector_logs_wait_time_and_raises_the_same_error(self):
+        with self.assertRaisesRegex(ServiceException, 'pose_selector_get_all.*can be retried'):
+            self._timed_get_all(wait_s=2.0, wait_error=ROSException('timeout exceeded'))
+        self.rospy.logwarn.assert_called_once_with(
+            'pose selector call /pick_pose_selector_node/pose_selector_get_all took 2.0 s '
+            '(2.0 s waiting for the service, 0.0 s in the call)')
+        self.assertIn('(service unavailable): 2.000 s waiting for the service',
+                      self._logged(self.rospy.logdebug))
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import time
 import warnings
 from typing import Any, List, Optional, Sequence
 import rospy
@@ -23,6 +24,8 @@ class Perception:
         self.semantic_env_rep = semantic_env_rep
         self.pose_selector_service_timeout = float(rospy.get_param(
             '~pose_selector_service_timeout', 2.0))
+        # a pose selector call (readiness wait + call) slower than this is logged as a warning
+        self.pose_selector_slow_call_s = float(rospy.get_param('~pose_selector_slow_call_s', 1.0))
         self.pose_selector_activate_srv_name = rospy.get_param(
             '~pose_selector_activate_srv_name', '/pick_pose_selector_node/pose_selector_activate')
         self.pose_selector_class_query_srv_name = rospy.get_param(
@@ -99,11 +102,29 @@ class Perception:
             rospy.logerr(message)
             raise rospy.ServiceException(message) from exc
 
+    def _log_pose_selector_timing(self, srv_name: str, wait_s: float, call_s: float, outcome: str) -> None:
+        """Log where the time of one pose selector call went: readiness wait or the call itself."""
+        rospy.logdebug(
+            f'pose selector call {srv_name} ({outcome}): {wait_s:.3f} s waiting for the service, '
+            f'{call_s:.3f} s in the call')
+        if wait_s + call_s > self.pose_selector_slow_call_s:
+            rospy.logwarn(
+                f'pose selector call {srv_name} took {wait_s + call_s:.1f} s '
+                f'({wait_s:.1f} s waiting for the service, {call_s:.1f} s in the call)')
+
     def _call_pose_selector_service(self, srv_name: str, service_proxy, *args):
-        self.wait_for_pose_selector_srv(srv_name)
+        start = time.monotonic()
         try:
-            return service_proxy(*args)
+            self.wait_for_pose_selector_srv(srv_name)
+        except Exception:
+            self._log_pose_selector_timing(srv_name, time.monotonic() - start, 0.0, 'service unavailable')
+            raise
+        called = time.monotonic()
+        wait_s = called - start
+        try:
+            response = service_proxy(*args)
         except rospy.ServiceException as exc:
+            self._log_pose_selector_timing(srv_name, wait_s, time.monotonic() - called, 'call failed')
             message = (
                 f"Pose selector service '{srv_name}' became unavailable while being "
                 'called. Check the pose selector node and retry the operation. '
@@ -111,6 +132,11 @@ class Perception:
             )
             rospy.logerr(message)
             raise rospy.ServiceException(message) from exc
+        except Exception:
+            self._log_pose_selector_timing(srv_name, wait_s, time.monotonic() - called, 'call failed')
+            raise
+        self._log_pose_selector_timing(srv_name, wait_s, time.monotonic() - called, 'ok')
+        return response
 
     # ------------------------------------------------------------------ perceive
     def perceive(self, targets: Optional[Sequence[str]] = None, confidence: str = 'high', *,
