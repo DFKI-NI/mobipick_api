@@ -16,6 +16,16 @@ class Manipulation(Arm):
         # why the last pick/place/insert succeeded or failed (the grasplan action status text, a timeout or a missing
         # server), for callers that need more than the returned bool, e.g. to tell a person why a pick failed
         self.last_manipulation_message = ''
+        # action client of the pick, place or insert in progress, for cancel_manipulation() from another thread
+        self._active_action_client = None
+
+    def cancel_manipulation(self) -> bool:
+        '''ask the server of the pick, place or insert in progress to stop; False when none was started'''
+        client = self._active_action_client
+        if client is None:
+            return False
+        client.cancel_goal()
+        return True
 
     @staticmethod
     def _status_text(action_client) -> str:
@@ -35,6 +45,7 @@ class Manipulation(Arm):
         self.last_manipulation_message = ''
         pick_object_server_name = self.namespace + pick_object_server_name
         action_client = actionlib.SimpleActionClient(pick_object_server_name, PickObjectAction)
+        self._active_action_client = action_client
         rospy.loginfo(f'waiting for {pick_object_server_name} action server')
         if action_client.wait_for_server(timeout=rospy.Duration.from_sec(2.0)):
             rospy.loginfo(f'found {pick_object_server_name} action server')
@@ -77,6 +88,7 @@ class Manipulation(Arm):
         self.last_manipulation_message = ''
         place_object_server_name = self.namespace + place_object_server_name
         action_client = actionlib.SimpleActionClient(place_object_server_name, PlaceObjectAction)
+        self._active_action_client = action_client
         rospy.loginfo(f'waiting for {place_object_server_name} action server')
         if action_client.wait_for_server(timeout=rospy.Duration.from_sec(2.0)):
             rospy.loginfo(f'found {place_object_server_name} action server')
@@ -112,6 +124,7 @@ class Manipulation(Arm):
         self.last_manipulation_message = ''
         insert_object_server_name = self.namespace + insert_object_server_name
         action_client = actionlib.SimpleActionClient(insert_object_server_name, InsertObjectAction)
+        self._active_action_client = action_client
         rospy.loginfo(f'waiting for {insert_object_server_name} action server')
         if action_client.wait_for_server(timeout=rospy.Duration.from_sec(2.0)):
             rospy.loginfo(f'found {insert_object_server_name} action server')

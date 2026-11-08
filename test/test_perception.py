@@ -268,6 +268,26 @@ class PerceptionTest(unittest.TestCase):
         self.rospy.wait_for_service.assert_called_once_with(
             self.perception.pose_selector_delete_srv_name, timeout=2.0)
 
+    def test_default_names_follow_the_robot_namespace(self):
+        names = self.module.robot_names
+        self.assertEqual('/pick_pose_selector_node/pose_selector_clear', names('/')['clear'])  # robot 1 is global
+        self.assertEqual('/pick_pose_selector_node/pose_selector_clear', names('/mobipick/')['clear'])
+        self.assertEqual('/mobipick/perceive', names('mobipick')['perceive'])
+        second = names('/mobipick2/')
+        self.assertEqual('/mobipick2/pick_pose_selector_node/pose_selector_activate', second['activate'])
+        self.assertEqual('/mobipick2/pick_pose_selector_node/pose_selector_get_all', second['get_all'])
+        self.assertEqual('/mobipick2/detect_objects', second['detect_objects'])
+        self.assertEqual('/mobipick2/inspect_object', second['inspect_object'])
+        self.assertEqual('/mobipick2/verify_objects', second['verify_objects'])
+
+    def test_a_second_robot_builds_its_own_pose_selector_proxies(self):
+        self.proxies.clear()
+        second = self.module.Perception('/mobipick2/', self.arm, self.semantic_env_rep)
+        self.assertEqual('/mobipick2/pick_pose_selector_node/pose_selector_clear', second.pose_selector_clear_srv_name)
+        self.assertIn('/mobipick2/pick_pose_selector_node/pose_selector_clear', self.proxies)
+        self.assertNotIn('/pick_pose_selector_node/pose_selector_clear', self.proxies)
+        self.assertEqual('/mobipick2/perceive', second.perceive_action_name)
+
     def test_service_call_race_has_service_specific_error(self):
         get_all = self.proxies[self.perception.pose_selector_get_all_poses_srv_name]
         get_all.side_effect = ServiceException('transport error')

@@ -17,43 +17,65 @@ def _deprecated(message: str) -> None:
     warnings.warn(message, DeprecationWarning, stacklevel=3)
 
 
+DEFAULT_ROBOT = 'mobipick'  # robot 1: its pose selector runs in the global namespace, every other robot's under /<ns>
+
+
+def robot_names(namespace: str) -> dict:
+    """The default ROS names of one robot's perception servers, from its namespace ('mobipick2', '/mobipick2/' ...):
+    robot 1 (or no namespace) keeps the global pose selector, a further robot has its own under /<namespace>."""
+    robot = (namespace or '').strip('/') or DEFAULT_ROBOT
+    selector = ('' if robot == DEFAULT_ROBOT else '/' + robot) + '/pick_pose_selector_node/'
+    return {
+        'activate': selector + 'pose_selector_activate',
+        'class_query': selector + 'pose_selector_class_query',
+        'get_all': selector + 'pose_selector_get_all',
+        'delete': selector + 'pose_selector_delete',
+        'clear': selector + 'pose_selector_clear',
+        'detect_objects': f'/{robot}/detect_objects',
+        'verify_objects': f'/{robot}/verify_objects',
+        'inspect_object': f'/{robot}/inspect_object',
+        'perceive': f'/{robot}/perceive',
+    }
+
+
 class Perception:
     def __init__(self, namespace: str, arm: Manipulation, semantic_env_rep: SemEnvRep) -> None:
         self.namespace = namespace
         self.arm = arm
         self.semantic_env_rep = semantic_env_rep
+        names = robot_names(namespace)
         self.pose_selector_service_timeout = float(rospy.get_param(
             '~pose_selector_service_timeout', 2.0))
         # a pose selector call (readiness wait + call) slower than this is logged as a warning
         self.pose_selector_slow_call_s = float(rospy.get_param('~pose_selector_slow_call_s', 1.0))
         self.pose_selector_activate_srv_name = rospy.get_param(
-            '~pose_selector_activate_srv_name', '/pick_pose_selector_node/pose_selector_activate')
+            '~pose_selector_activate_srv_name', names['activate'])
         self.pose_selector_class_query_srv_name = rospy.get_param(
-            '~pose_selector_class_query_srv_name', '/pick_pose_selector_node/pose_selector_class_query')
+            '~pose_selector_class_query_srv_name', names['class_query'])
         self.pose_selector_get_all_poses_srv_name = rospy.get_param(
-            '~pose_selector_get_all_poses_srv_name', '/pick_pose_selector_node/pose_selector_get_all')
+            '~pose_selector_get_all_poses_srv_name', names['get_all'])
         self.pose_selector_delete_srv_name = rospy.get_param(
-            '~pose_selector_delete_srv_name', '/pick_pose_selector_node/pose_selector_delete')
+            '~pose_selector_delete_srv_name', names['delete'])
         self.pose_selector_clear_srv_name = rospy.get_param(
-            '~pose_selector_clear_srv_name', '/pick_pose_selector_node/pose_selector_clear')
+            '~pose_selector_clear_srv_name', names['clear'])
         # AnyGrasp's stand-alone open-set detector (Grounding DINO + SAM2), see
         # mobipick_graspness/nodes/segmentation_action.py. Accepted detections are
         # pushed into the pose selector by the action server itself.
         self.detect_objects_action_name = rospy.get_param(
-            '~detect_objects_action_name', '/mobipick/detect_objects')
+            '~detect_objects_action_name', names['detect_objects'])
         self.detect_objects_server_timeout = float(rospy.get_param('~detect_objects_server_timeout', 2.0))
         self.detect_objects_result_timeout = float(rospy.get_param('~detect_objects_result_timeout', 120.0))
         self._detect_objects_client = None
         # Second stage of the two-stage open-set pipeline (see detect_proposals / verify_candidates).
         self.verify_objects_action_name = rospy.get_param(
-            '~verify_objects_action_name', '/mobipick/verify_objects')
+            '~verify_objects_action_name', names['verify_objects'])
         self.verify_objects_result_timeout = float(rospy.get_param('~verify_objects_result_timeout', 300.0))
         # mobipick_active_perception: InspectObject (open-set close-up inspection, for testing and
         # for Perceive) and Perceive (the one perception entry point for callers)
-        self.inspect_object_action_name = rospy.get_param('~inspect_object_action_name', '/mobipick/inspect_object')
+        self.inspect_object_action_name = rospy.get_param('~inspect_object_action_name', names['inspect_object'])
         self.inspect_object_result_timeout = float(rospy.get_param('~inspect_object_result_timeout', 1800.0))
         self._inspect_object_client = None
-        self.perceive_action_name = rospy.get_param('~perceive_action_name', '/mobipick/perceive')
+        self.perceive_action_name = rospy.get_param('~perceive_action_name', names['perceive'])
         self.perceive_server_timeout = float(rospy.get_param('~perceive_server_timeout', 2.0))
         self.perceive_result_timeout = float(rospy.get_param('~perceive_result_timeout', 3600.0))
         self._perceive_client = None

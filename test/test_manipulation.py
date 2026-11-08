@@ -116,6 +116,13 @@ class TestManipulationMessage(unittest.TestCase):
         _ActionClient.success, _ActionClient.status_text = False, ''
         self.arm = self.module.Manipulation('/mobipick/', False)
 
+    def test_cancel_manipulation_cancels_the_goal_of_the_pick_in_progress(self):
+        self.assertFalse(self.arm.cancel_manipulation())  # nothing started
+        _ActionClient.success = True
+        self.arm.pick_object('multimeter_1', 'table_1')
+        self.assertTrue(self.arm.cancel_manipulation())
+        self.assertTrue(_ActionClient.instances[-1].cancelled)
+
     def test_failed_pick_keeps_the_action_status_text(self):
         _ActionClient.status_text = 'AnyGrasp generation failed: No grasp candidates were found'
         self.assertFalse(self.arm.pick_object('apple', 'table_1'))
