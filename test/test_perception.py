@@ -288,6 +288,60 @@ class PerceptionTest(unittest.TestCase):
         self.assertNotIn('/pick_pose_selector_node/pose_selector_clear', self.proxies)
         self.assertEqual('/mobipick2/perceive', second.perceive_action_name)
 
+    def _with_private_params(self, params):
+        self.rospy.get_param.side_effect = lambda name, default: params.get(name, default)
+
+    def test_an_override_scoped_to_one_robot_does_not_reach_another_robot_of_the_process(self):
+        # a process serving several robots (a panel launched for robot 3 with a robot selector) scopes its overrides
+        self._with_private_params({
+            '~robots/mobipick3/pose_selector_clear_srv_name': '/elsewhere/pose_selector_clear',
+            '~robots/mobipick3/perceive_action_name': '/elsewhere/perceive'})
+        third = self.module.Perception('/mobipick3/', self.arm, self.semantic_env_rep)
+        second = self.module.Perception('mobipick2', self.arm, self.semantic_env_rep)
+        first = self.module.Perception('/', self.arm, self.semantic_env_rep)
+        self.assertEqual('/elsewhere/pose_selector_clear', third.pose_selector_clear_srv_name)
+        self.assertEqual('/elsewhere/perceive', third.perceive_action_name)
+        self.assertEqual('/mobipick3/pick_pose_selector_node/pose_selector_activate',
+                         third.pose_selector_activate_srv_name)
+        self.assertEqual('/mobipick2/pick_pose_selector_node/pose_selector_clear', second.pose_selector_clear_srv_name)
+        self.assertEqual('/mobipick2/perceive', second.perceive_action_name)
+        self.assertEqual('/pick_pose_selector_node/pose_selector_clear', first.pose_selector_clear_srv_name)
+
+    def test_an_unscoped_override_still_applies_and_a_scoped_one_wins_for_its_robot(self):
+        # a process for one robot keeps its plain private parameters
+        self._with_private_params({
+            '~perceive_action_name': '/custom/perceive',
+            '~robots/mobipick2/perceive_action_name': '/custom2/perceive'})
+        first = self.module.Perception('mobipick', self.arm, self.semantic_env_rep)
+        second = self.module.Perception('/mobipick2/', self.arm, self.semantic_env_rep)
+        self.assertEqual('/custom/perceive', first.perceive_action_name)
+        self.assertEqual('/custom2/perceive', second.perceive_action_name)
+
+    def test_a_renamed_robot_1_with_its_scoped_global_selector_keeps_it(self):
+        # which selector a robot uses is a launch choice: robot 1 renamed alpha keeps the global one
+        selector = '/pick_pose_selector_node/'
+        self._with_private_params({f'~robots/alpha/{name}_srv_name': selector + service for name, service in (
+            ('pose_selector_activate', 'pose_selector_activate'), ('pose_selector_class_query', 'pose_selector_class_query'),
+            ('pose_selector_get_all_poses', 'pose_selector_get_all'), ('pose_selector_delete', 'pose_selector_delete'),
+            ('pose_selector_clear', 'pose_selector_clear'))})
+        alpha = self.module.Perception('/alpha/', self.arm, self.semantic_env_rep)
+        for name in ('activate', 'class_query', 'get_all_poses', 'delete', 'clear'):
+            self.assertTrue(getattr(alpha, f'pose_selector_{name}_srv_name').startswith(selector), name)
+        self.assertIn('/pick_pose_selector_node/pose_selector_delete', self.proxies)
+
+    def test_a_custom_unscoped_selector_reaches_all_five_services_of_every_robot(self):
+        self._with_private_params({f'~pose_selector_{name}_srv_name': f'/custom/pose_selector_{name}'
+                                   for name in ('activate', 'class_query', 'get_all_poses', 'delete', 'clear')})
+        for namespace in ('/', 'mobipick2'):
+            perception = self.module.Perception(namespace, self.arm, self.semantic_env_rep)
+            for name in ('activate', 'class_query', 'get_all_poses', 'delete', 'clear'):
+                self.assertEqual(f'/custom/pose_selector_{name}', getattr(perception, f'pose_selector_{name}_srv_name'))
+
+    def test_a_scoped_name_of_a_nested_namespace_keeps_its_inner_segments(self):
+        self._with_private_params({'~robots/team/alpha/perceive_action_name': '/team/alpha/perceive_custom'})
+        nested = self.module.Perception('/team/alpha/', self.arm, self.semantic_env_rep)
+        self.assertEqual('/team/alpha/perceive_custom', nested.perceive_action_name)
+
     def test_service_call_race_has_service_specific_error(self):
         get_all = self.proxies[self.perception.pose_selector_get_all_poses_srv_name]
         get_all.side_effect = ServiceException('transport error')
