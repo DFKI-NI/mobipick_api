@@ -177,7 +177,7 @@ class Perception:
                  dope_only: bool = False, gd_only: bool = False, use_vlm: bool = True, align: bool = True,
                  observation_pose: Optional[str] = None, session_dir: str = '',
                  observation_list: Optional[List[str]] = None, feedback_cb: Optional[Any] = None,
-                 view: str = 'quick') -> Optional[str]:
+                 view: str = 'quick', accept_on_word: bool = False) -> Optional[str]:
         '''Perceive ``targets`` and return one human readable text with a line per target.
 
         A thin client of the ``mobipick_active_perception`` Perceive action (``/mobipick/perceive``),
@@ -188,7 +188,10 @@ class Perception:
         ``dope_only`` / ``gd_only`` (not both), ``use_vlm``, ``align`` and ``observation_pose`` are
         passed through. ``view`` matters for table targets only: ``quick`` (default) is one view from the
         observation pose, ``full`` asks the server for several views of the table (where it supports
-        that; it says in the text when it took only one). The text starts with ``success:``,
+        that; it says in the text when it took only one). ``accept_on_word`` (default off) is for an open-set target
+        at high confidence after the person said the best candidate is good enough: when the vision check refuses
+        every candidate, the one with the best detector score is committed for this call only (nothing is stored and no
+        threshold changes); without a candidate the line says there was nothing to accept. The text starts with ``success:``,
         ``partial:`` or ``failed:``.
 
         Without the Perceive server the old closed-set observation runs instead (deprecated) and
@@ -222,9 +225,14 @@ class Perception:
                       observation_pose=observation_pose or '', session_dir=session_dir or '')
         if view != 'quick':
             fields['view'] = view   # a quick view also works with a Perceive action built before this field
+        if accept_on_word:
+            fields['accept_on_word'] = True   # sent only when asked: a Perceive action built before this field never sees it
         try:
             goal = PerceiveGoal(**fields)
         except AttributeError:
+            if accept_on_word:
+                return self._failed(targets, 'accept_on_word needs a Perceive action with the accept_on_word field: '
+                                             'rebuild mobipick_active_perception')
             return self._failed(targets, f"view='{view}' needs a Perceive action with the view field: rebuild "
                                          'mobipick_active_perception')
         rospy.loginfo(f'perceive {targets} with {goal.confidence} confidence')
@@ -420,13 +428,15 @@ class Perception:
 
     def verify_candidates(self, object_name: str, candidates: List[List[str]],
                           query_variants: Optional[List[str]] = None, include_full_frames: bool = True,
-                          commit: bool = True) -> Optional[Any]:
+                          commit: bool = True, accept_best_when_none_match: bool = False) -> Optional[Any]:
         '''Second stage: verify candidate objects, each given as the list of ``detection_id``s
         (from one or several :meth:`detect_proposals` views) believed to show the same physical
         object. Every candidate is judged by one multi-image VLM request; the result holds one
         ``grasplan/Verdict`` per candidate whose ``status`` separates MATCH / NO_MATCH from
         verifier failures (TIMEOUT, HTTP_ERROR, NO_CONTENT, BAD_JSON, UNAVAILABLE, ERROR).
-        With ``commit`` accepted candidates are pushed to the pose selector. Returns the
+        With ``commit`` accepted candidates are pushed to the pose selector; with ``accept_best_when_none_match`` as well,
+        when the verifier refuses every candidate the one with the best detector score is pushed (default off).
+        Returns the
         ``grasplan/VerifyObjectsResult`` or None.
         '''
         import actionlib
@@ -438,6 +448,8 @@ class Perception:
         goal = VerifyObjectsGoal(object_name=object_name, query_variants=list(query_variants or []),
                                  candidates=[CandidateGroup(detection_ids=list(ids)) for ids in candidates],
                                  include_full_frames=include_full_frames, commit=commit)
+        if accept_best_when_none_match:   # only when asked: a VerifyObjects action built before the field never sees it
+            goal.accept_best_when_none_match = True
         rospy.loginfo(f'verifying {len(candidates)} candidate(s) of {object_name!r} with the VLM')
         return self._run_action(self._verify_objects_client, goal, 'open-set verification',
                                 self.verify_objects_result_timeout)

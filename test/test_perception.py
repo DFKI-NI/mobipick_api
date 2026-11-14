@@ -232,6 +232,38 @@ class PerceptionTest(unittest.TestCase):
         self.assertIn('needs a Perceive action with the view field: rebuild mobipick_active_perception', text)
         client.send_goal.assert_not_called()
 
+    def test_accept_on_word_goes_into_the_goal_only_when_asked(self):
+        text, client = self._send(accept_on_word=True)
+        self.assertTrue(client.send_goal.call_args.args[0].accept_on_word)
+        text, client = self._send()
+        self.assertFalse(hasattr(client.send_goal.call_args.args[0], 'accept_on_word'))   # an older action never sees it
+
+    def test_accept_on_word_with_an_old_action_says_rebuild(self):
+        def old_goal(**fields):
+            if 'accept_on_word' in fields:
+                raise AttributeError('accept_on_word')
+            return types.SimpleNamespace(**fields)
+        text, client = self._send(goal_type=old_goal, accept_on_word=True)
+        self.assertIn('accept_on_word needs a Perceive action with the accept_on_word field: rebuild', text)
+        client.send_goal.assert_not_called()
+
+    def test_verify_candidates_sends_accept_best_only_when_asked(self):
+        client = Mock()
+        goal_type = Mock(side_effect=lambda **fields: types.SimpleNamespace(**fields))
+        msg = _module('grasplan.msg', CandidateGroup=lambda detection_ids: detection_ids, VerifyObjectsAction=object,
+                      VerifyObjectsGoal=goal_type)
+        package = _module('grasplan')
+        package.__path__ = []
+        actionlib = _module('actionlib', SimpleActionClient=Mock(return_value=client))
+        self.perception._run_action = Mock(return_value='result')
+        with unittest.mock.patch.dict(sys.modules, {'grasplan': package, 'grasplan.msg': msg, 'actionlib': actionlib}):
+            self.perception.verify_candidates('pear', [['1:0']])
+            plain_goal = self.perception._run_action.call_args.args[1]
+            self.perception.verify_candidates('pear', [['1:0']], accept_best_when_none_match=True)
+            asked_goal = self.perception._run_action.call_args.args[1]
+        self.assertFalse(hasattr(plain_goal, 'accept_best_when_none_match'))
+        self.assertTrue(asked_goal.accept_best_when_none_match)
+
     def test_inspect_table_is_a_deprecated_alias(self):
         self.perception.inspect_object = Mock(return_value='result')
         with self.assertWarns(DeprecationWarning):
