@@ -11,12 +11,17 @@ object, the common_tools_ws one (the one the demo containers import) keeps them 
 client lookup tries both and fails soft: a missing message must never break a navigate.
 '''
 
+import time
 from typing import Any, Callable, Optional
 
 from move_base_msgs.msg import MoveBaseGoal, MoveBaseResult
 from robot_api import Base
 
 # actionlib_msgs/GoalStatus values, spelled out for the planner
+CANCELLED_ON_REQUEST = 'cancelled on request'   # the manipulation actions word a cancel the same way
+# a goal that ended preempted this much before its own timeout was cancelled from outside (a stop), not by the timeout
+TIMEOUT_MARGIN_S = 1.0
+
 _STATE_NAMES = {0: 'pending', 1: 'active', 2: 'preempted', 3: 'succeeded', 4: 'aborted', 5: 'rejected',
                 6: 'preempting', 7: 'recalling', 8: 'recalled', 9: 'lost'}
 
@@ -31,13 +36,27 @@ class Navigation(Base):
                      done_cb: Optional[Callable[[int, MoveBaseResult], Any]] = None) -> Any:
         '''As Base.move_to_goal (every move_to_* of Base ends here); also fills last_navigation_message.'''
         self.last_navigation_message = ''
+        started = self._now()
         state = super().move_to_goal(goal, timeout, done_cb)
         if done_cb is None:
-            self.last_navigation_message = self.describe_goal_end(state, timeout)
+            self.last_navigation_message = self.describe_goal_end(state, timeout, self._now() - started)
         return state
 
-    def describe_goal_end(self, state: Any, timeout: float) -> str:
-        '''"<state>: <move_base status text>" for the goal that just ended; never raises.'''
+    @staticmethod
+    def _now() -> float:
+        '''the clock the move_base wait runs on (ROS time, also in the simulator), else the monotonic clock'''
+        try:
+            import rospy
+            now = rospy.get_time()
+            if now > 0.0:
+                return now
+        except Exception:
+            pass
+        return time.monotonic()
+
+    def describe_goal_end(self, state: Any, timeout: float, elapsed: Optional[float] = None) -> str:
+        '''"<state>: <move_base status text>" for the goal that just ended; never raises. ``elapsed``: how long the wait
+        took; a preempted goal without a text that ended clearly before ``timeout`` was cancelled from outside.'''
         try:
             if state is None:
                 return 'the move_base action server is not available'
@@ -47,7 +66,11 @@ class Navigation(Base):
             if state == 1:   # still active after send_goal_and_wait: the timeout hit and the cancel got no answer
                 text = text or f'no result within {timeout:.0f} s'
             elif state == 2 and not text:
-                text = f'cancelled after the timeout of {timeout:.0f} s'
+                if timeout <= 0 or (elapsed is not None and elapsed < timeout - TIMEOUT_MARGIN_S):
+                    # a stop or another cancel, not the timeout of this wait (a timeout of 0 waits without end)
+                    text = CANCELLED_ON_REQUEST
+                else:
+                    text = f'cancelled after the timeout of {timeout:.0f} s'
             return f'{name}: {text}' if text else name
         except Exception as error:   # a message problem must never break a navigate
             return f'state {state} (no status text: {error})'

@@ -81,13 +81,49 @@ class TestNavigationMessage(unittest.TestCase):
         self.assertEqual('aborted: Failed to find a valid plan. Even after executing all recovery behaviors.',
                          self.base.last_navigation_message)
 
+    def _clock(self, *times):
+        ticks = iter(times)
+        return unittest.mock.patch.object(self.module.Navigation, '_now', staticmethod(lambda: next(ticks)))
+
     def test_timeout_without_text_names_the_timeout(self):
         _Base.state = 2
-        self.base.move_to_goal(object(), timeout=15.0)
+        with self._clock(100.0, 115.2):   # the wait ran its full 15 s
+            self.base.move_to_goal(object(), timeout=15.0)
         self.assertEqual('preempted: cancelled after the timeout of 15 s', self.base.last_navigation_message)
         _Base.state = 1
         self.base.move_to_goal(object(), timeout=15.0)
         self.assertEqual('active: no result within 15 s', self.base.last_navigation_message)
+
+    def test_a_cancel_before_the_timeout_is_a_cancel_on_request(self):
+        # a spoken stop cancels every move_base goal: it was reported as "cancelled after the timeout of 90 s"
+        _Base.state = 2
+        with self._clock(100.0, 112.0):
+            self.base.move_to_goal(object(), timeout=90.0)
+        self.assertEqual('preempted: cancelled on request', self.base.last_navigation_message)
+        _Client.status_text = 'Stopped by the operator.'
+        with self._clock(100.0, 112.0):
+            self.base.move_to_goal(object(), timeout=90.0)
+        self.assertEqual('preempted: Stopped by the operator.', self.base.last_navigation_message)   # move_base's own text wins
+
+    def test_a_goal_ending_within_the_margin_of_its_timeout_is_the_timeout(self):
+        # 14.5 s of a 15 s wait: the timeout of this wait, not a cancel from outside (1 s margin)
+        _Base.state = 2
+        with self._clock(100.0, 114.5):
+            self.base.move_to_goal(object(), timeout=15.0)
+        self.assertEqual('preempted: cancelled after the timeout of 15 s', self.base.last_navigation_message)
+
+    def test_a_wait_without_a_timeout_never_names_a_timeout(self):
+        # a timeout of 0 waits without end: a preempted goal was cancelled from outside, never "after the timeout of 0 s"
+        _Base.state = 2
+        with self._clock(100.0, 112.0):
+            self.base.move_to_goal(object(), timeout=0.0)
+        self.assertEqual('preempted: cancelled on request', self.base.last_navigation_message)
+        self.assertEqual('preempted: cancelled on request', self.base.describe_goal_end(2, 0.0))
+
+    def test_without_the_elapsed_time_a_preempted_goal_keeps_the_timeout_wording(self):
+        # a caller of the older signature passes no elapsed time: the text stays as before
+        _Base.state = 2
+        self.assertEqual('preempted: cancelled after the timeout of 15 s', self.base.describe_goal_end(2, 15.0))
 
     def test_wrapper_held_client_of_the_other_robot_api(self):
         # common_tools_ws robot_api: Base has no clients of its own, the module's ROS wrapper holds them
